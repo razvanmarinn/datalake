@@ -13,18 +13,3 @@ service MasterService {
 
     rpc GetMetadata(common.Location) returns (common.MasterMetadataResponse) {}
 }
-
-service LBService {
-  rpc GetWorkerID(WorkerIDRequest) returns (WorkerIDResponse);
-}
-
-message UUID {
-   string value = 1;
-}
-
-message WorkerIDRequest {
-}
-
-message WorkerIDResponse {
-  UUID worker_id = 1;
-}

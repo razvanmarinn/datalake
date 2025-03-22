@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"log"
 	"time"
+	pb "github.com/razvanmarinn/datalake/protobuf"
 
 	"github.com/razvanmarinn/ingestion_consumer/internal/batcher"
 	"github.com/segmentio/kafka-go"

@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package lb_dfs;
+
+option go_package = "github.com/razvanmarinn/datalake/protobuf";
+
+import "common.proto";
+
+
+service LBService {
+    rpc GetWorkerID(WorkerIDRequest) returns (WorkerIDResponse);
+  }
+  
+  message UUID {
+     string value = 1;
+  }
+  
+  message WorkerIDRequest {
+  }
+  
+  message WorkerIDResponse {
+    UUID worker_id = 1;
+  }
