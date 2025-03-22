@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/razvanmarinn/ingestion_consumer/internal/batcher"
-	pb "github.com/razvanmarinn/ingestion_consumer/proto"
 	"github.com/segmentio/kafka-go"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
