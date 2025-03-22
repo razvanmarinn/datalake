@@ -1,0 +1,18 @@
+syntax = "proto3";
+package ingestion_consumer;
+
+option go_package = "github.com/razvanmarinn/ingestion_consumer/proto";
+
+import "common.proto";
+
+// WorkerService handles data ingestion operations
+service WorkerService {
+    // StoreBatchAvro stores an Avro-formatted batch
+    rpc StoreBatchAvro(AvroBatchRequest) returns (common.WorkerResponse) {}
+}
+
+// AvroBatchRequest contains Avro batch data for storage
+message AvroBatchRequest {
+    string batch_id = 1;    // Unique identifier for the Avro batch
+    bytes avro_data = 2;    // Avro-encoded batch data
+}

@@ -1,0 +1,23 @@
+syntax = "proto3";
+package worker_dfs;
+
+option go_package = "github.com/razvanmarinn/rcss/proto/worker_dfs";
+
+import "common.proto";
+
+// BatchReceiverService handles batch operations between clients and workers
+service BatchReceiverService {
+
+    rpc ReceiveBatch(common.ClientRequestToWorker) returns (common.WorkerResponse) {}
+    
+
+    rpc RetrieveBatchForClient(ClientRequestToWorker) returns (WorkerBatchResponse) {}
+}
+
+message ClientRequestToWorker {
+    string batch_id = 1; 
+}
+
+message WorkerBatchResponse {
+    bytes batch_data = 1; 
+}

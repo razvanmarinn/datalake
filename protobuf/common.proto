@@ -1,0 +1,51 @@
+syntax = "proto3";
+package common;
+
+option go_package = "github.com/razvanmarinn/rcss/proto/common";
+
+message Batch {
+    string uuid = 1;
+    int32 size = 2;
+}
+
+message Batches {
+    repeated Batch batches = 1;
+}
+
+message ClientFileRequestToMaster {
+    string file_name = 1;
+    int32 hash = 2;
+    int64 file_size = 3;
+    Batches batch_info = 4;
+}
+
+message ClientBatchRequestToMaster {
+    string batch_id = 1;
+    int32 batch_size = 2;
+}
+
+message MasterResponse {
+    string worker_ip = 1;
+    int32 worker_port = 2;
+}
+
+message MasterFileResponse {
+    bool success = 1;
+}
+
+message WorkerResponse {
+    bool success = 1;
+}
+
+message BatchLocation {
+    repeated string worker_ids = 1;
+}
+
+message MasterMetadataResponse {
+    repeated string batch_ids = 1;
+    map<string, BatchLocation> batch_locations = 2;
+}
+
+message Location {
+    string file_name = 1;
+}
