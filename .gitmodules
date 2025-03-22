@@ -1,14 +1,18 @@
 [submodule "dfs"]
     path = dfs
     url = https://github.com/razvanmarinn/dfs
+    branch = main
 [submodule "rcss"]
     path = rcss
     url = https://github.com/razvanmarinn/rcss
+    branch = main
 
 [submodule "logsink"]
     path = logsink
     url = https://github.com/razvanmarinn/logsink
+    branch = main
 
 [submodule "schema_registry"]
     path = schema_registry
     url = https://github.com/razvanmarin/schema_registry
+    branch = main
