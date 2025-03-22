@@ -8,6 +8,7 @@ package proto
 
 import (
 	context "context"
+	protobuf "github.com/razvanmarinn/datalake/protobuf"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -29,7 +30,7 @@ const (
 // WorkerService handles data ingestion operations
 type WorkerServiceClient interface {
 	// StoreBatchAvro stores an Avro-formatted batch
-	StoreBatchAvro(ctx context.Context, in *AvroBatchRequest, opts ...grpc.CallOption) (*WorkerResponse, error)
+	StoreBatchAvro(ctx context.Context, in *AvroBatchRequest, opts ...grpc.CallOption) (*protobuf.WorkerResponse, error)
 }
 
 type workerServiceClient struct {
@@ -40,9 +41,9 @@ func NewWorkerServiceClient(cc grpc.ClientConnInterface) WorkerServiceClient {
 	return &workerServiceClient{cc}
 }
 
-func (c *workerServiceClient) StoreBatchAvro(ctx context.Context, in *AvroBatchRequest, opts ...grpc.CallOption) (*WorkerResponse, error) {
+func (c *workerServiceClient) StoreBatchAvro(ctx context.Context, in *AvroBatchRequest, opts ...grpc.CallOption) (*protobuf.WorkerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(WorkerResponse)
+	out := new(protobuf.WorkerResponse)
 	err := c.cc.Invoke(ctx, WorkerService_StoreBatchAvro_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -57,7 +58,7 @@ func (c *workerServiceClient) StoreBatchAvro(ctx context.Context, in *AvroBatchR
 // WorkerService handles data ingestion operations
 type WorkerServiceServer interface {
 	// StoreBatchAvro stores an Avro-formatted batch
-	StoreBatchAvro(context.Context, *AvroBatchRequest) (*WorkerResponse, error)
+	StoreBatchAvro(context.Context, *AvroBatchRequest) (*protobuf.WorkerResponse, error)
 	mustEmbedUnimplementedWorkerServiceServer()
 }
 
@@ -68,7 +69,7 @@ type WorkerServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedWorkerServiceServer struct{}
 
-func (UnimplementedWorkerServiceServer) StoreBatchAvro(context.Context, *AvroBatchRequest) (*WorkerResponse, error) {
+func (UnimplementedWorkerServiceServer) StoreBatchAvro(context.Context, *AvroBatchRequest) (*protobuf.WorkerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method StoreBatchAvro not implemented")
 }
 func (UnimplementedWorkerServiceServer) mustEmbedUnimplementedWorkerServiceServer() {}

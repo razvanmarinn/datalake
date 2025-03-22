@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package master_dfs;
 
-option go_package = "github.com/razvanmarinn/datalake/proto";
+option go_package = "github.com/razvanmarinn/datalake/protobuf";
 
 import "common.proto";
 
@@ -12,4 +12,19 @@ service MasterService {
     rpc GetBatchDestination(common.ClientBatchRequestToMaster) returns (common.MasterResponse) {}
 
     rpc GetMetadata(common.Location) returns (common.MasterMetadataResponse) {}
+}
+
+service LBService {
+  rpc GetWorkerID(WorkerIDRequest) returns (WorkerIDResponse);
+}
+
+message UUID {
+   string value = 1;
+}
+
+message WorkerIDRequest {
+}
+
+message WorkerIDResponse {
+  UUID worker_id = 1;
 }

@@ -4,7 +4,7 @@
 // - protoc             v5.29.3
 // source: worker.proto
 
-package proto
+package protobuf
 
 import (
 	context "context"
@@ -29,8 +29,8 @@ const (
 //
 // BatchReceiverService handles batch operations between clients and workers
 type BatchReceiverServiceClient interface {
-	ReceiveBatch(ctx context.Context, in *ClientRequestToWorker, opts ...grpc.CallOption) (*WorkerResponse, error)
-	RetrieveBatchForClient(ctx context.Context, in *ClientRequestToWorker, opts ...grpc.CallOption) (*WorkerBatchResponse, error)
+	ReceiveBatch(ctx context.Context, in *SendClientRequestToWorker, opts ...grpc.CallOption) (*WorkerResponse, error)
+	RetrieveBatchForClient(ctx context.Context, in *GetClientRequestToWorker, opts ...grpc.CallOption) (*WorkerBatchResponse, error)
 }
 
 type batchReceiverServiceClient struct {
@@ -41,7 +41,7 @@ func NewBatchReceiverServiceClient(cc grpc.ClientConnInterface) BatchReceiverSer
 	return &batchReceiverServiceClient{cc}
 }
 
-func (c *batchReceiverServiceClient) ReceiveBatch(ctx context.Context, in *ClientRequestToWorker, opts ...grpc.CallOption) (*WorkerResponse, error) {
+func (c *batchReceiverServiceClient) ReceiveBatch(ctx context.Context, in *SendClientRequestToWorker, opts ...grpc.CallOption) (*WorkerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(WorkerResponse)
 	err := c.cc.Invoke(ctx, BatchReceiverService_ReceiveBatch_FullMethodName, in, out, cOpts...)
@@ -51,7 +51,7 @@ func (c *batchReceiverServiceClient) ReceiveBatch(ctx context.Context, in *Clien
 	return out, nil
 }
 
-func (c *batchReceiverServiceClient) RetrieveBatchForClient(ctx context.Context, in *ClientRequestToWorker, opts ...grpc.CallOption) (*WorkerBatchResponse, error) {
+func (c *batchReceiverServiceClient) RetrieveBatchForClient(ctx context.Context, in *GetClientRequestToWorker, opts ...grpc.CallOption) (*WorkerBatchResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(WorkerBatchResponse)
 	err := c.cc.Invoke(ctx, BatchReceiverService_RetrieveBatchForClient_FullMethodName, in, out, cOpts...)
@@ -67,8 +67,8 @@ func (c *batchReceiverServiceClient) RetrieveBatchForClient(ctx context.Context,
 //
 // BatchReceiverService handles batch operations between clients and workers
 type BatchReceiverServiceServer interface {
-	ReceiveBatch(context.Context, *ClientRequestToWorker) (*WorkerResponse, error)
-	RetrieveBatchForClient(context.Context, *ClientRequestToWorker) (*WorkerBatchResponse, error)
+	ReceiveBatch(context.Context, *SendClientRequestToWorker) (*WorkerResponse, error)
+	RetrieveBatchForClient(context.Context, *GetClientRequestToWorker) (*WorkerBatchResponse, error)
 	mustEmbedUnimplementedBatchReceiverServiceServer()
 }
 
@@ -79,10 +79,10 @@ type BatchReceiverServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedBatchReceiverServiceServer struct{}
 
-func (UnimplementedBatchReceiverServiceServer) ReceiveBatch(context.Context, *ClientRequestToWorker) (*WorkerResponse, error) {
+func (UnimplementedBatchReceiverServiceServer) ReceiveBatch(context.Context, *SendClientRequestToWorker) (*WorkerResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ReceiveBatch not implemented")
 }
-func (UnimplementedBatchReceiverServiceServer) RetrieveBatchForClient(context.Context, *ClientRequestToWorker) (*WorkerBatchResponse, error) {
+func (UnimplementedBatchReceiverServiceServer) RetrieveBatchForClient(context.Context, *GetClientRequestToWorker) (*WorkerBatchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RetrieveBatchForClient not implemented")
 }
 func (UnimplementedBatchReceiverServiceServer) mustEmbedUnimplementedBatchReceiverServiceServer() {}
@@ -107,7 +107,7 @@ func RegisterBatchReceiverServiceServer(s grpc.ServiceRegistrar, srv BatchReceiv
 }
 
 func _BatchReceiverService_ReceiveBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ClientRequestToWorker)
+	in := new(SendClientRequestToWorker)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -119,13 +119,13 @@ func _BatchReceiverService_ReceiveBatch_Handler(srv interface{}, ctx context.Con
 		FullMethod: BatchReceiverService_ReceiveBatch_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BatchReceiverServiceServer).ReceiveBatch(ctx, req.(*ClientRequestToWorker))
+		return srv.(BatchReceiverServiceServer).ReceiveBatch(ctx, req.(*SendClientRequestToWorker))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
 func _BatchReceiverService_RetrieveBatchForClient_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ClientRequestToWorker)
+	in := new(GetClientRequestToWorker)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -137,7 +137,7 @@ func _BatchReceiverService_RetrieveBatchForClient_Handler(srv interface{}, ctx c
 		FullMethod: BatchReceiverService_RetrieveBatchForClient_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BatchReceiverServiceServer).RetrieveBatchForClient(ctx, req.(*ClientRequestToWorker))
+		return srv.(BatchReceiverServiceServer).RetrieveBatchForClient(ctx, req.(*GetClientRequestToWorker))
 	}
 	return interceptor(ctx, in, info, handler)
 }

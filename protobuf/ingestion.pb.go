@@ -7,6 +7,7 @@
 package proto
 
 import (
+	protobuf "github.com/razvanmarinn/datalake/protobuf"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -111,8 +112,8 @@ func file_ingestion_proto_rawDescGZIP() []byte {
 
 var file_ingestion_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
 var file_ingestion_proto_goTypes = []any{
-	(*AvroBatchRequest)(nil), // 0: ingestion_consumer.AvroBatchRequest
-	(*WorkerResponse)(nil),   // 1: common.WorkerResponse
+	(*AvroBatchRequest)(nil),        // 0: ingestion_consumer.AvroBatchRequest
+	(*protobuf.WorkerResponse)(nil), // 1: common.WorkerResponse
 }
 var file_ingestion_proto_depIdxs = []int32{
 	0, // 0: ingestion_consumer.WorkerService.StoreBatchAvro:input_type -> ingestion_consumer.AvroBatchRequest
@@ -129,7 +130,6 @@ func file_ingestion_proto_init() {
 	if File_ingestion_proto != nil {
 		return
 	}
-	file_common_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
