@@ -1,2 +1,1 @@
-#ignore kafka data
-/k8s/kafka/data/*
+/k8s/kafka/data/
