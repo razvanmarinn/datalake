@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package dfs;
+
+option go_package = "github.com/razvanmarinn/dfs/proto/dfs";
+
+service LBService {
+  rpc GetWorkerID(WorkerIDRequest) returns (WorkerIDResponse);
+}
+// rpc StoreBatchAvro(AvroBatchRequest) returns (WorkerResponse);
+
+
+message UUID {
+   string value = 1;
+}
+
+message WorkerIDRequest {
+}
+
+message WorkerIDResponse {
+  UUID worker_id = 1;
+}
