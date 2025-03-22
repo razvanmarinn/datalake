@@ -1,14 +1,14 @@
 syntax = "proto3";
 package worker_dfs;
 
-option go_package = "github.com/razvanmarinn/rcss/proto/worker_dfs";
+option go_package = "github.com/razvanmarinn/datalake/proto";
 
 import "common.proto";
 
 // BatchReceiverService handles batch operations between clients and workers
 service BatchReceiverService {
 
-    rpc ReceiveBatch(common.ClientRequestToWorker) returns (common.WorkerResponse) {}
+    rpc ReceiveBatch(ClientRequestToWorker) returns (common.WorkerResponse) {}
     
 
     rpc RetrieveBatchForClient(ClientRequestToWorker) returns (WorkerBatchResponse) {}

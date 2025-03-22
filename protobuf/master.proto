@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package master_dfs;
 
-option go_package = "github.com/razvanmarinn/rcss/proto/master";
+option go_package = "github.com/razvanmarinn/datalake/proto";
 
 import "common.proto";
 
