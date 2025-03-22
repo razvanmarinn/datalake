@@ -4,7 +4,6 @@ package lb_dfs;
 
 option go_package = "github.com/razvanmarinn/datalake/protobuf";
 
-import "common.proto";
 
 
 service LBService {
