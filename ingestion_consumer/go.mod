@@ -18,3 +18,5 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250115164207-1a7da9e5054f // indirect
 	google.golang.org/protobuf v1.36.5 // indirect
 )
+
+replace github.com/razvanmarinn/datalake => /Users/marinrazvan/Developer/datalake

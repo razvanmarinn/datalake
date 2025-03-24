@@ -21,23 +21,22 @@ func setupRouter(kf *kf.KafkaWriter) *gin.Engine {
 	r.POST("/ingest", func(c *gin.Context) {
 		var msg IngestMessageBody
 		if err := c.ShouldBindJSON(&msg); err != nil {
+			// Improved error handling with more information
+			fmt.Printf("Error binding JSON: %v\n", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
+
+		// Check if schema exists (you can add more detailed logging here)
 		err := kf.EnsureTopicExists(context.Background(), kf.TopicResolver.ResolveTopic(msg.SchemaName))
 		if err != nil {
-			fmt.Printf("topic already exists %s\n", err)
+			fmt.Printf("Error ensuring topic exists: %v\n", err)
 		}
 
-		// schemaURL := "http://schema-registry:8081/schemas/" + msg.SchemaName
-		// resp, err := http.Get(schemaURL)
-		// if err != nil || resp.StatusCode != http.StatusOK {
-		// 	c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid schema name"})
-		// 	return
-		// }
-
+		// Convert the `Data` field to JSON for Kafka
 		jsonData, _ := json.Marshal(msg.Data)
 
+		// Send message to Kafka
 		kf.WriteMessageForSchema(context.Background(), msg.SchemaName, kafka.Message{
 			Key:   []byte(msg.SchemaName),
 			Value: jsonData,

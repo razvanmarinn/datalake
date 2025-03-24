@@ -1,1 +1,3 @@
 /k8s/kafka/data/
+/worker_data/
+*.json
