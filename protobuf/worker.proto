@@ -20,6 +20,7 @@ message GetClientRequestToWorker {
 message SendClientRequestToWorker {
     string batch_id = 1; 
     bytes data = 2;
+    string file_type = 3;
 }
 message WorkerBatchResponse {
     bytes batch_data = 1; 
