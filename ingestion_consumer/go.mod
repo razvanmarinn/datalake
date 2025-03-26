@@ -4,12 +4,14 @@ go 1.23.4
 
 require (
 	github.com/google/uuid v1.6.0
+	github.com/linkedin/goavro/v2 v2.13.1
 	github.com/razvanmarinn/datalake v0.0.0-20250322185346-7ce66f242c6e
 	github.com/segmentio/kafka-go v0.4.47
 	google.golang.org/grpc v1.71.0
 )
 
 require (
+	github.com/golang/snappy v0.0.1 // indirect
 	github.com/klauspost/compress v1.15.9 // indirect
 	github.com/pierrec/lz4/v4 v4.1.15 // indirect
 	golang.org/x/net v0.34.0 // indirect

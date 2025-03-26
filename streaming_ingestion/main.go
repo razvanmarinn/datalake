@@ -18,8 +18,9 @@ func setupRouter(kf *kf.KafkaWriter) *gin.Engine {
 		c.String(http.StatusOK, "pong")
 	})
 
-	r.POST("/ingest", func(c *gin.Context) {
+	r.POST("/:project_name/ingest", func(c *gin.Context) {
 		var msg IngestMessageBody
+		project_name := c.Param("project_name")
 		if err := c.ShouldBindJSON(&msg); err != nil {
 			// Improved error handling with more information
 			fmt.Printf("Error binding JSON: %v\n", err)
@@ -34,11 +35,11 @@ func setupRouter(kf *kf.KafkaWriter) *gin.Engine {
 		}
 
 		// Convert the `Data` field to JSON for Kafka
-		jsonData, _ := json.Marshal(msg.Data)
+		jsonData, _ := json.Marshal(msg)
 
 		// Send message to Kafka
-		kf.WriteMessageForSchema(context.Background(), msg.SchemaName, kafka.Message{
-			Key:   []byte(msg.SchemaName),
+		kf.WriteMessageForSchema(context.Background(), project_name, kafka.Message{
+			Key:   []byte(project_name),
 			Value: jsonData,
 		})
 

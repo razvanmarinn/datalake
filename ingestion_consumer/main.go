@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"log"
+	"net/http"
 	"time"
 
 	pb "github.com/razvanmarinn/datalake/protobuf"
@@ -21,55 +23,26 @@ const (
 	BatchFlushPeriod = 10 * time.Second // Flush every 10 seconds if not full
 )
 
-// func main() {
-// 	kafka_topics := []string{"raw_test"}
-// 	r := kafka.NewReader(kafka.ReaderConfig{
-// 		Brokers:     []string{"localhost:9092"},
-// 		Topic:       kafka_topics[0],
-// 		Partition:   0,
-// 		MinBytes:    10e3, // 10KB
-// 		MaxBytes:    10e6, // 10MB
-// 		StartOffset: kafka.LastOffset,
-// 	})
-// 	defer r.Close()
+func fetchSchema(messageKey string) (*batcher.Schema, error) {
+	url := fmt.Sprintf("http://localhost:8081/razvan/schema/%s", messageKey)
 
-// 	message_batcher := batcher.NewMessageBatch(kafka_topics[0])
-// 	ticker := time.NewTicker(BatchFlushPeriod)
-// 	defer ticker.Stop()
+	response, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch schema: %v", err)
+	}
+	defer response.Body.Close()
 
-// 	for {
-// 		select {
-// 		case <-ticker.C:
-// 			if message_batcher.Size() >= MinFileSize {
-// 				err := processBatch(message_batcher)
-// 				if err != nil {
-// 					log.Fatal(err)
-// 				}
-// 				message_batcher.Clean()
-// 			}
+	var schema batcher.Schema
+	err = json.NewDecoder(response.Body).Decode(&schema)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode schema response: %v", err)
+	}
 
-// 		default:
-// 			m, err := r.ReadMessage(context.Background())
-// 			if err != nil {
-// 				log.Fatal(err)
-// 			}
-// 			fmt.Printf("message at topic/partition/offset %v/%v/%v: %s = %s\n", m.Topic, m.Partition, m.Offset, string(m.Key), string(m.Value))
-
-// 			message_batcher.AddMessage(m.Key, m.Value)
-
-// 			if message_batcher.Size() >= MaxBatchSize {
-// 				err := processBatch(message_batcher)
-// 				if err != nil {
-// 					log.Fatal(err)
-// 				}
-// 				message_batcher.Clean()
-// 			}
-// 		}
-// 	}
-// }
+	return &schema, nil
+}
 
 func main() {
-	kafka_topics := []string{"raw_test1"}
+	kafka_topics := []string{"raw_test2"}
 	r := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     []string{"localhost:9092"},
 		Topic:       kafka_topics[0],
@@ -80,14 +53,37 @@ func main() {
 	})
 	defer r.Close()
 
+	w := kafka.NewWriter(kafka.WriterConfig{
+		Brokers:  []string{"localhost:9092"},
+		Topic:    "raw_test2-dlt",
+		Balancer: &kafka.LeastBytes{},
+	})
+
 	message_batcher := batcher.NewMessageBatch(kafka_topics[0])
 
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 10; i++ {
 		m, err := r.ReadMessage(context.Background())
 		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Printf("message at topic/partition/offset %v/%v/%v: %s = %s\n", m.Topic, m.Partition, m.Offset, string(m.Key), string(m.Value))
+		msg_schema, err := fetchSchema(string(m.Key))
+		if err != nil {
+			log.Fatal(err)
+		}
+		messageData, err := batcher.UnmarshalMessage(msg_schema, m.Value)
+		if err != nil {
+			w.WriteMessages(context.Background(), kafka.Message{
+				Key:   m.Key,
+				Value: m.Value,
+			})
+			continue
+		}
+
+		// Print out the unmarshalled message data
+		for fieldName, fieldValue := range messageData {
+			fmt.Printf("Field: %s, Value: %v\n", fieldName, fieldValue)
+		}
 
 		message_batcher.AddMessage(m.Key, m.Value)
 
@@ -185,7 +181,15 @@ func sendBatchToWorker(client pb.BatchReceiverServiceClient, batchID string, dat
 func RegisterFileMetadata(msgbatch *batcher.MessageBatch) error {
 	masterConn, err := createGRPCConnection("localhost:50055")
 	if err != nil {
-		return fmt.Errorf("failed to connect to master: %v", err)
+		return fmt.Errorf("failed to fetch schema: %v", err)
+	}
+	schema, err := fetchSchema(string(msgbatch.Messages[0].Key)) // Fetch schema based on key
+	if err != nil {
+		return fmt.Errorf("failed to fetch schema: %v", err)
+	}
+	avroBytes, err := msgbatch.GetMessagesAsAvroBytes(schema)
+	if err != nil {
+		return fmt.Errorf("failed to serialize messages to Avro: %v", err)
 	}
 	defer masterConn.Close()
 
@@ -210,7 +214,7 @@ func RegisterFileMetadata(msgbatch *batcher.MessageBatch) error {
 	defer workerConn.Close()
 
 	workerClient := pb.NewBatchReceiverServiceClient(workerConn)
-	workerRes, err := sendBatchToWorker(workerClient, msgbatch.UUID.String(), msgbatch.GetMessagesAsBytes())
+	workerRes, err := sendBatchToWorker(workerClient, msgbatch.UUID.String(), avroBytes)
 	if err != nil {
 		return fmt.Errorf("failed to send batch to worker: %v", err)
 	}
