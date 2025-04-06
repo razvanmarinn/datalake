@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	kf "github.com/razvanmarinn/streaming_ingestion/internal/kafka"
@@ -39,7 +41,7 @@ func setupRouter(kf *kf.KafkaWriter) *gin.Engine {
 
 		// Send message to Kafka
 		kf.WriteMessageForSchema(context.Background(), project_name, kafka.Message{
-			Key:   []byte(project_name),
+			Key:   []byte(msg.SchemaName),
 			Value: jsonData,
 		})
 
@@ -50,7 +52,16 @@ func setupRouter(kf *kf.KafkaWriter) *gin.Engine {
 }
 
 func main() {
-	kafkaWriter := kf.NewKafkaWriter([]string{"localhost:9092"})
+	// Get Kafka brokers from environment variable
+	kafkaBrokersStr := os.Getenv("KAFKA_BROKERS")
+	if kafkaBrokersStr == "" {
+		fmt.Println("Warning: KAFKA_BROKERS environment variable not set. Defaulting to localhost:9092. This will likely not work with Kubernetes.")
+		kafkaBrokersStr = "localhost:9092"
+	}
+	kafkaBrokers := strings.Split(kafkaBrokersStr, ",")
+	fmt.Printf("Using Kafka brokers: %v\n", kafkaBrokers)
+
+	kafkaWriter := kf.NewKafkaWriter(kafkaBrokers)
 	r := setupRouter(kafkaWriter)
 	r.Run(":8080")
 }

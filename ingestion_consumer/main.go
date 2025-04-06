@@ -7,6 +7,8 @@ import (
 	"hash/fnv"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"time"
 
 	pb "github.com/razvanmarinn/datalake/protobuf"
@@ -24,13 +26,39 @@ const (
 )
 
 func fetchSchema(messageKey string) (*batcher.Schema, error) {
-	url := fmt.Sprintf("http://localhost:8081/razvan/schema/%s", messageKey)
+	// Get schema registry host and port from environment or use default service name
+	schemaRegistryHost := os.Getenv("SCHEMA_REGISTRY_HOST")
+	if schemaRegistryHost == "" {
+		schemaRegistryHost = "schema-registry" // Use Kubernetes service name
+	}
+
+	schemaRegistryPort := os.Getenv("SCHEMA_REGISTRY_PORT")
+	if schemaRegistryPort == "" {
+		schemaRegistryPort = "8081" // Default port
+	}
+
+	projectName := os.Getenv("SCHEMA_PROJECT_NAME")
+	if projectName == "" {
+		projectName = "razvan" // Default project name
+	}
+
+	url := fmt.Sprintf("http://%s:%s/%s/schema/%s",
+		schemaRegistryHost,
+		schemaRegistryPort,
+		projectName,
+		messageKey)
+
+	log.Printf("Fetching schema from: %s", url)
 
 	response, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch schema: %v", err)
 	}
 	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("schema registry returned status code %d", response.StatusCode)
+	}
 
 	var schema batcher.Schema
 	err = json.NewDecoder(response.Body).Decode(&schema)
@@ -42,58 +70,87 @@ func fetchSchema(messageKey string) (*batcher.Schema, error) {
 }
 
 func main() {
-	kafka_topics := []string{"raw_test2"}
+	kafkaBrokers := os.Getenv("KAFKA_BROKERS")
+	kafkaTopic := os.Getenv("KAFKA_TOPIC")
+	groupID := os.Getenv("KAFKA_GROUP_ID")
+
+	if kafkaBrokers == "" || kafkaTopic == "" || groupID == "" {
+		log.Fatal("KAFKA_BROKERS, KAFKA_TOPIC, and KAFKA_GROUP_ID environment variables must be set.")
+	}
+
+	brokerList := strings.Split(kafkaBrokers, ",")
+	if len(brokerList) == 0 || brokerList[0] == "" {
+		log.Fatal("KAFKA_BROKERS environment variable is empty or malformed after splitting.")
+	}
+	log.Printf("Connecting to Kafka brokers: %v", brokerList)
+
 	r := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     []string{"localhost:9092"},
-		Topic:       kafka_topics[0],
-		Partition:   0,
-		MinBytes:    10e3, // 10KB
-		MaxBytes:    10e6, // 10MB
-		StartOffset: kafka.LastOffset,
+		Brokers:  brokerList,
+		Topic:    kafkaTopic,
+		GroupID:  groupID,
+		MinBytes: 10e3,
+		MaxBytes: 10e6,
 	})
 	defer r.Close()
 
 	w := kafka.NewWriter(kafka.WriterConfig{
-		Brokers:  []string{"localhost:9092"},
-		Topic:    "raw_test2-dlt",
+		Brokers:  brokerList,
+		Topic:    kafkaTopic + "-dlt",
 		Balancer: &kafka.LeastBytes{},
 	})
 
-	message_batcher := batcher.NewMessageBatch(kafka_topics[0])
+	messageBatcher := batcher.NewMessageBatch(kafkaTopic)
 
-	for i := 0; i < 10; i++ {
+	// --- Periodic flush goroutine ---
+	go func() {
+		ticker := time.NewTicker(BatchFlushPeriod)
+		defer ticker.Stop()
+		for range ticker.C {
+			if len(messageBatcher.Messages) > 0 {
+				log.Printf("[Flush Timer] Triggered flush with %d messages", len(messageBatcher.Messages))
+				if err := processBatch(messageBatcher); err != nil {
+					log.Printf("Error processing batch: %v", err)
+				}
+				messageBatcher.Clean()
+			}
+		}
+	}()
+
+	// --- Main Kafka consume loop ---
+	for {
 		m, err := r.ReadMessage(context.Background())
 		if err != nil {
-			log.Fatal(err)
+			log.Printf("Error reading message from topic %s: %v", kafkaTopic, err)
+			break
 		}
-		fmt.Printf("message at topic/partition/offset %v/%v/%v: %s = %s\n", m.Topic, m.Partition, m.Offset, string(m.Key), string(m.Value))
-		msg_schema, err := fetchSchema(string(m.Key))
+		log.Printf("Received message at offset %d, key=%s", m.Offset, string(m.Key))
+
+		msgSchema, err := fetchSchema(string(m.Key))
 		if err != nil {
-			log.Fatal(err)
-		}
-		messageData, err := batcher.UnmarshalMessage(msg_schema, m.Value)
-		if err != nil {
-			w.WriteMessages(context.Background(), kafka.Message{
-				Key:   m.Key,
-				Value: m.Value,
-			})
+			log.Printf("Error fetching schema for message key %s: %v", string(m.Key), err)
+			_ = w.WriteMessages(context.Background(), kafka.Message{Key: m.Key, Value: m.Value})
 			continue
 		}
 
-		// Print out the unmarshalled message data
-		for fieldName, fieldValue := range messageData {
-			fmt.Printf("Field: %s, Value: %v\n", fieldName, fieldValue)
+		_, err = batcher.UnmarshalMessage(msgSchema, m.Value)
+		if err != nil {
+			log.Printf("Error unmarshalling message: %v", err)
+			_ = w.WriteMessages(context.Background(), kafka.Message{Key: m.Key, Value: m.Value})
+			continue
 		}
 
-		message_batcher.AddMessage(m.Key, m.Value)
+		messageBatcher.AddMessage(m.Key, m.Value)
+		log.Printf("Current batch size: %d messages", len(messageBatcher.Messages))
 
+		if len(messageBatcher.Messages) >= MaxBatchSize {
+			log.Printf("[Max Batch Size Reached] Triggering flush with %d messages", len(messageBatcher.Messages))
+			err := processBatch(messageBatcher)
+			if err != nil {
+				log.Printf("Error processing batch: %v", err)
+			}
+			messageBatcher.Clean()
+		}
 	}
-	err := processBatch(message_batcher)
-	if err != nil {
-		log.Fatal(err)
-	}
-	message_batcher.Clean()
-
 }
 
 func processBatch(msgbatch *batcher.MessageBatch) error {
@@ -114,9 +171,6 @@ func createGRPCConnection(address string) (*grpc.ClientConn, error) {
 }
 
 func combineIpAndPort(ip string, port int32) string {
-	if ip[:6] == "worker" {
-		ip = "localhost"
-	}
 	return fmt.Sprintf("%s:%d", ip, port)
 }
 
@@ -179,7 +233,7 @@ func sendBatchToWorker(client pb.BatchReceiverServiceClient, batchID string, dat
 }
 
 func RegisterFileMetadata(msgbatch *batcher.MessageBatch) error {
-	masterConn, err := createGRPCConnection("localhost:50055")
+	masterConn, err := createGRPCConnection("master:50055")
 	if err != nil {
 		return fmt.Errorf("failed to fetch schema: %v", err)
 	}

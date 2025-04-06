@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion-consumer-test3
+  # Optional: Specify the namespace if your consumer isn't in the 'default' namespace
+  # namespace: your-consumer-namespace
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ingestion-consumer-test3
+  template:
+    metadata:
+      labels:
+        app: ingestion-consumer-test3
+    spec:
+      containers:
+      - name: ingestion-consumer
+        # Make sure this image is accessible from your Kubernetes cluster
+        image: ingestion-consumer:latest
+        imagePullPolicy: IfNotPresent # Or Always if needed
+        env:
+        - name: KAFKA_BROKERS
+          # Use the comma-separated list of broker DNS names from the headless service
+          value: "kafka-0.kafka-headless.kafka.svc.cluster.local:9092,kafka-1.kafka-headless.kafka.svc.cluster.local:9092,kafka-2.kafka-headless.kafka.svc.cluster.local:9092"
+        - name: KAFKA_TOPIC
+          value: "raw_test3" # Ensure this topic exists in your Kafka cluster
+        - name: KAFKA_GROUP_ID
+          value: "ingestion-consumers-test3" # This looks like a reasonable group ID

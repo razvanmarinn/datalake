@@ -93,14 +93,18 @@ func fieldsToAvroFields(fields []Field) string {
 func UnmarshalMessage(schema *Schema, value []byte) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
 
-	var valueMap map[string]interface{}
-	err := json.Unmarshal(value, &valueMap)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal message value: %v", err)
+	var wrapper map[string]interface{}
+	if err := json.Unmarshal(value, &wrapper); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal message wrapper: %v", err)
+	}
+
+	data, ok := wrapper["data"].(map[string]interface{})
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid 'data' field in message")
 	}
 
 	for _, field := range schema.Fields {
-		fieldValue, exists := valueMap[field.Name]
+		fieldValue, exists := data[field.Name]
 		if !exists {
 			return nil, fmt.Errorf("field %s missing in message", field.Name)
 		}
@@ -108,12 +112,17 @@ func UnmarshalMessage(schema *Schema, value []byte) (map[string]interface{}, err
 		var typedValue interface{}
 		switch field.Type {
 		case "int":
-			if _, ok := fieldValue.(string); ok {
-				return nil, fmt.Errorf("expected numeric value, got string")
+			floatVal, ok := fieldValue.(float64)
+			if !ok {
+				return nil, fmt.Errorf("expected numeric value for %s", field.Name)
 			}
-			typedValue = int(fieldValue.(float64))
+			typedValue = int(floatVal)
 		case "string":
-			typedValue = fieldValue.(string)
+			strVal, ok := fieldValue.(string)
+			if !ok {
+				return nil, fmt.Errorf("expected string value for %s", field.Name)
+			}
+			typedValue = strVal
 		default:
 			return nil, fmt.Errorf("unsupported field type %s", field.Type)
 		}

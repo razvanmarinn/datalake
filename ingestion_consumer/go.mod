@@ -5,7 +5,7 @@ go 1.23.4
 require (
 	github.com/google/uuid v1.6.0
 	github.com/linkedin/goavro/v2 v2.13.1
-	github.com/razvanmarinn/datalake v0.0.0-20250322185346-7ce66f242c6e
+	github.com/razvanmarinn/datalake v0.0.0-20250326222313-2998f57f2ff7
 	github.com/segmentio/kafka-go v0.4.47
 	google.golang.org/grpc v1.71.0
 )
@@ -21,4 +21,4 @@ require (
 	google.golang.org/protobuf v1.36.5 // indirect
 )
 
-replace github.com/razvanmarinn/datalake => /Users/marinrazvan/Developer/datalake
+// replace github.com/razvanmarinn/datalake => /Users/marinrazvan/Developer/datalake

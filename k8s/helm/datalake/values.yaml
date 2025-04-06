@@ -1,0 +1,42 @@
+master:
+  image: dfs-master:latest
+  port: 50055
+
+workers:
+  image: dfs-worker:latest
+  nodes:
+    - name: worker-1
+      port: 50051
+      pvc: worker1-state-pvc
+      pv: worker1-state-pv
+      path: /datalake/worker_data/worker1-state
+    - name: worker-2
+      port: 50052
+      pvc: worker2-state-pvc
+      pv: worker2-state-pv
+      path: /datalake/worker_data/worker2-state
+    - name: worker-3
+      port: 50053
+      pvc: worker3-state-pvc
+      pv: worker3-state-pv
+      path: /datalake/worker_data/worker3-state
+serviceAccount:
+  create: true
+  name: dfs-service-account
+
+service:
+  type: ClusterIP
+  port: 80
+ingress:
+  enabled: true
+  name: dfs-ingress
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+
+image:
+  repository: your-docker-repository/your-image-name
+  tag: latest
+  pullPolicy: IfNotPresent

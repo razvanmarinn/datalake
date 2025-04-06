@@ -3,14 +3,16 @@ WORKDIR /app
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o streaming_ingestion . 
-RUN ls -l 
+ARG GITHUB_PAT
+
+RUN git config --global url."https://${GITHUB_PAT}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+
+RUN CGO_ENABLED=0 GOOS=linux go build -o streaming_ingestion .
+RUN ls -l
 
 FROM alpine:latest
 
-
 COPY --from=builder /app/ .
-
 
 RUN chmod +x streaming_ingestion
 EXPOSE 8080

@@ -1,141 +1,119 @@
+---
 apiVersion: v1
-kind: ConfigMap
+kind: ServiceAccount
 metadata:
-  name: kafka-config
+  name: kafka
   namespace: kafka
+---
+apiVersion: v1
+kind: Service
+metadata:
   labels:
     app: kafka
-
-data:
-  KAFKA_KRAFT_MODE: "true"
-  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
-  KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
-  KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
-  KAFKA_LOG_RETENTION_HOURS: "168"
-  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: kafka-controller
+  name: kafka-headless
   namespace: kafka
 spec:
-  serviceName: kafka-controller
-  replicas: 1
+  clusterIP: None
+  clusterIPs:
+  - None
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: tcp-kafka-int
+    port: 9092
+    protocol: TCP
+    targetPort: tcp-kafka-int
+  - name: tcp-kafka-ctrl
+    port: 29093
+    protocol: TCP
+    targetPort: tcp-kafka-ctrl
   selector:
-    matchLabels:
-      app: kafka-controller
-  template:
-    metadata:
-      labels:
-        app: kafka-controller
-    spec:
-      containers:
-        - name: kafka-controller
-          image: confluentinc/cp-kafka:latest
-          ports:
-            - containerPort: 9093
-          env:
-            - name: KAFKA_NODE_ID
-              value: "0"
-            - name: KAFKA_PROCESS_ROLES
-              value: "controller"
-            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
-              value: "0@kafka-controller-0.kafka-controller:9093"
-            - name: KAFKA_LISTENERS
-              value: "CONTROLLER://0.0.0.0:9093"
-            - name: KAFKA_ADVERTISED_LISTENERS
-              value: "CONTROLLER://kafka-controller-0.kafka-controller:9093"
-            - name: KAFKA_LOG_DIRS
-              value: "/var/lib/kafka/data"
-            - name: CLUSTER_ID
-              value: "Mk3OEYBSD34fcwNTJENDM2Qk"
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/kafka/data
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 10Gi
+    app: kafka
+  sessionAffinity: None
+  type: ClusterIP
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: kafka-broker
+  labels:
+    app: kafka
+  name: kafka
   namespace: kafka
 spec:
-  serviceName: kafka-broker
+  podManagementPolicy: Parallel
   replicas: 3
+  revisionHistoryLimit: 10
   selector:
     matchLabels:
-      app: kafka-broker
+      app: kafka
+  serviceName: kafka-headless
   template:
     metadata:
       labels:
-        app: kafka-broker
+        app: kafka
     spec:
+      serviceAccountName: kafka
       containers:
-        - name: kafka-broker
-          image: confluentinc/cp-kafka:latest
-          ports:
-            - containerPort: 9092
-          env:
-            - name: KAFKA_NODE_ID
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: KAFKA_PROCESS_ROLES
-              value: "broker"
-            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
-              value: "0@kafka-controller-0.kafka-controller:9093"
-            - name: KAFKA_LISTENERS
-              value: "PLAINTEXT://0.0.0.0:9092"
-            - name: KAFKA_ADVERTISED_LISTENERS
-              value: "PLAINTEXT://$(HOSTNAME).kafka-broker:9092"
-            - name: KAFKA_LOG_DIRS
-              value: "/var/lib/kafka/data"
-            - name: CLUSTER_ID
-              value: "Mk3OEYBSD34fcwNTJENDM2Qk"
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/kafka/data
-  volumeClaimTemplates:
-    - metadata:
-        name: data
-      spec:
-        accessModes: ["ReadWriteOnce"]
+      - command:
+        - sh
+        - -exc
+        - |
+          export CLUSTER_ID="6PMpHYL9QkeyXRj9Nrp4KA" && \
+          export KAFKA_NODE_ID=${HOSTNAME##*-} 
+          export KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://${POD_NAME}.kafka-headless.kafka.svc.cluster.local:9092
+          export KAFKA_CONTROLLER_QUORUM_VOTERS="0@kafka-0.kafka-headless.kafka.svc.cluster.local:29093,1@kafka-1.kafka-headless.kafka.svc.cluster.local:29093,2@kafka-2.kafka-headless.kafka.svc.cluster.local:29093" 
+
+          exec /etc/confluent/docker/run
+        env:
+        - name: KAFKA_CONTROLLER_LISTENER_NAMES
+          value: "CONTROLLER"
+        - name: KAFKA_LISTENERS
+          value: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        name: kafka
+        image: docker.io/confluentinc/confluent-local:7.5.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9092
+          name: tcp-kafka-int
+          protocol: TCP
+        - containerPort: 29093
+          name: tcp-kafka-ctrl
+          protocol: TCP
         resources:
+          limits:
+            cpu: "1"
+            memory: 1400Mi
           requests:
-            storage: 10Gi
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: kafka-controller
-  namespace: kafka
-spec:
-  clusterIP: None
-  ports:
-    - name: controller
-      port: 9093
-  selector:
-    app: kafka-controller
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: kafka-broker
-  namespace: kafka
-spec:
-  clusterIP: None
-  ports:
-    - name: kafka
-      port: 9092
-  selector:
-    app: kafka-broker
+            cpu: 250m
+            memory: 512Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          # readOnlyRootFilesystem: true
+          runAsGroup: 1000
+          runAsUser: 1000
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/kafka
+          name: config
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 1000
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: config
+  updateStrategy:
+    type: RollingUpdate
