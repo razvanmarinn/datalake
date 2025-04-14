@@ -10,19 +10,10 @@ import (
 
 type KafkaWriter struct {
 	Writer        *kafka.Writer
-	TopicResolver KafkaTopicResolver
 	Brokers       []string
 }
 
-type KafkaTopicResolver struct{}
 
-func NewKafkaTopicResolver() *KafkaTopicResolver {
-	return &KafkaTopicResolver{}
-}
-
-func (k *KafkaTopicResolver) ResolveTopic(projectName string) string {
-	return "raw_" + projectName
-}
 
 func NewKafkaWriter(brokers []string) *KafkaWriter {
 	return &KafkaWriter{
@@ -38,28 +29,22 @@ func NewKafkaWriter(brokers []string) *KafkaWriter {
 	}
 }
 
-func (k *KafkaWriter) EnsureTopicExists(ctx context.Context, topic string) error {
+func (k *KafkaWriter) EnsureTopicExists(ctx context.Context, topic string) (bool, error) {
 	conn, err := kafka.Dial("tcp", k.Brokers[0])
 	if err != nil {
-		return fmt.Errorf("failed to connect to Kafka: %w", err)
+		return false, fmt.Errorf("failed to connect to Kafka: %w", err)
 	}
 	defer conn.Close()
 
 	partitions, err := conn.ReadPartitions(topic)
 	if err == nil && len(partitions) > 0 {
-		return nil // Topic already exists
+		return true, nil // Topic already exists
 	}
-
-	return conn.CreateTopics(kafka.TopicConfig{
-		Topic:             topic,
-		NumPartitions:     3,
-		ReplicationFactor: 1,
-	})
+	return false, nil
 }
 
 func (k *KafkaWriter) WriteMessageForSchema(ctx context.Context, projectName string, message kafka.Message) error {
-	topic := k.TopicResolver.ResolveTopic(projectName)
-
+	topic := "create-resources"
 
 	topicMessage := message
 	topicMessage.Topic = topic
