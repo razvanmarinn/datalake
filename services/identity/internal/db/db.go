@@ -7,7 +7,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/razvanmarinn/identity_service/db/models"
+	"github.com/razvanmarinn/identity_service/internal/db/models"
 
 	_ "github.com/lib/pq"
 )
@@ -117,7 +117,6 @@ func RegisterProject(db *sql.DB, project *models.Project) error {
 	}
 	return nil
 }
-
 
 func CheckProjectExistence(db *sql.DB, projectName string) (bool, error) {
 	query := `SELECT EXISTS(SELECT 1 FROM project WHERE name = $1)`
