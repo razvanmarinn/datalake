@@ -10,10 +10,16 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/razvanmarinn/identity_service/internal/db"
 	"github.com/razvanmarinn/identity_service/internal/db/models"
-	"github.com/razvanmarinn/identity_service/internal/jwt"
 	kf "github.com/razvanmarinn/identity_service/internal/kafka"
+	"github.com/razvanmarinn/jwt/manager"
+
 	"github.com/segmentio/kafka-go"
 )
+
+type LoginBody struct {
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+}
 
 func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter) *gin.Engine {
 	r := gin.Default()
@@ -25,7 +31,12 @@ func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter) *gin.Engine {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		tkn, err := jwt.CreateToken(user.Username)
+		if err := db.RegisterUser(database, &user); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register user"})
+			return
+		}
+
+		tkn, err := manager.CreateToken(user.Username)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token"})
 			return
@@ -34,12 +45,26 @@ func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter) *gin.Engine {
 	})
 
 	r.POST("/login/", func(c *gin.Context) {
-		var user models.Client
-		if err := c.ShouldBindJSON(&user); err != nil {
+		var loginBody LoginBody
+		if err := c.ShouldBindJSON(&loginBody); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		tkn, err := jwt.CreateToken(user.Username)
+		user, err := db.GetUser(database, loginBody.Username)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user"})
+			return
+		}
+		if user == nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+			return
+		}
+		if user.Password != loginBody.Password {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
+			return
+		}
+
+		tkn, err := manager.CreateToken(loginBody.Username)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token"})
 			return

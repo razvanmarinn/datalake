@@ -1,0 +1,25 @@
+{
+    "folders": [
+        {
+            "path": "."
+        }
+    ],
+    "settings": {
+        "favorites.groups": [
+            "Default",
+            "favs"
+        ],
+        "favorites.currentGroup": "favs",
+        "favorites.resources": [
+            {
+                "filePath": "dfs",
+                "group": "favs"
+            },
+            {
+                "filePath": "services",
+                "group": "favs"
+            }
+        ],
+        "favorites.sortOrder": "ASC"
+    }
+}

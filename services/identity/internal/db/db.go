@@ -127,3 +127,19 @@ func CheckProjectExistence(db *sql.DB, projectName string) (bool, error) {
 	}
 	return exists, nil
 }
+
+
+func GetUser(db *sql.DB, username string) (*models.Client, error) {
+	query := `SELECT id, username, email, password FROM users WHERE username = $1`
+	row := db.QueryRow(query, username)
+
+	var user models.Client
+	err := row.Scan(&user.ID, &user.Username, &user.Email, &user.Password)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // User not found
+		}
+		return nil, fmt.Errorf("error scanning user: %v", err)
+	}
+	return &user, nil
+}
