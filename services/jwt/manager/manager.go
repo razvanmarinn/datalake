@@ -8,17 +8,19 @@ import (
 
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 type Claims struct {
-	UserID string `json:"username"`
+	UserID   string                 `json:"username"`
+	Projects []map[string]uuid.UUID `json:"projects"`
 	// Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
 var keyId string = "19c92999ceb1b952d80c6f90"
 
-func CreateToken(username string) (string, error) {
+func CreateToken(username string, projects []map[string]uuid.UUID) (string, error) {
 
 	secret, err := os.ReadFile("/Users/marinrazvan/Developer/datalake/services/jwt/certs/private.pem")
 	if err != nil {
@@ -32,6 +34,7 @@ func CreateToken(username string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256,
 		jwt.MapClaims{
 			"username": username,
+			"projects": projects,
 			"exp":      time.Now().Add(time.Hour * 24).Unix(),
 		})
 
@@ -64,6 +67,7 @@ func ParseToken(tokenStr string) (Claims, error) {
 	}
 	log.Printf("Parsed claims: %v", claims)
 	return Claims{
-		UserID: claims["username"].(string),
+		UserID:   claims["username"].(string),
+		Projects: claims["projects"].([]map[string]uuid.UUID),
 	}, nil
 }
