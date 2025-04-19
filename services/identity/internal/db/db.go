@@ -13,14 +13,14 @@ import (
 )
 
 func GetDBConfig() (string, int, string, string, string) {
-	host := getEnv("DB_HOST", "localhost")
+	host := getEnv("DB_HOST", "identity-postgres")
 	portStr := getEnv("DB_PORT", "5432")
 	port := 5432
 	if portStr != "" {
 		fmt.Sscanf(portStr, "%d", &port)
 	}
-	user := getEnv("DB_USER", "postgres")
-	password := getEnv("DB_PASSWORD", "1234")
+	user := getEnv("DB_USER", "identityuser")
+	password := getEnv("DB_PASSWORD", "identitypassword")
 	dbname := getEnv("DB_NAME", "identity_db")
 
 	return host, port, user, password, dbname

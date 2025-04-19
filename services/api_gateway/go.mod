@@ -4,8 +4,8 @@ go 1.23.4
 
 require (
 	github.com/gin-gonic/gin v1.10.0
-	github.com/razvanmarinn/datalake v0.0.0-20250406213751-4dc14e4ac905
-	github.com/razvanmarinn/jwt v0.0.0
+	github.com/razvanmarinn/datalake v0.0.0-20250417231049-4958177a0109
+	github.com/razvanmarinn/jwt v0.0.0-20250418201643-b18603eb142b
 	google.golang.org/grpc v1.71.0
 )
 
@@ -42,7 +42,3 @@ require (
 	google.golang.org/protobuf v1.36.5 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/razvanmarinn/datalake => ../../
-
-replace github.com/razvanmarinn/jwt => ../jwt

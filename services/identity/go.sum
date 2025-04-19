@@ -67,6 +67,10 @@ github.com/pierrec/lz4/v4 v4.1.15 h1:MO0/ucJhngq7299dKLwIMtgTfbkoSPF6AoMYDd8Q4q0
 github.com/pierrec/lz4/v4 v4.1.15/go.mod h1:gZWDp/Ze/IJXGXf23ltt2EXimqmTUXEy0GFuRQyBid4=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
+github.com/razvanmarinn/datalake v0.0.0-20250417231049-4958177a0109 h1:yrb+23lSx3k3PYYod3s1X8EPD1jlsnB5lutSsI3uiv8=
+github.com/razvanmarinn/datalake v0.0.0-20250417231049-4958177a0109/go.mod h1:o0+kZrK7CJTIF8m37oDrx49tNZK4FTVU9w9+34H4va8=
+github.com/razvanmarinn/jwt v0.0.0-20250418172855-5debd107d885 h1:nyHnHslwRgl+nhN4t0BMejATyQmtu/UczKBe9qJL7LM=
+github.com/razvanmarinn/jwt v0.0.0-20250418172855-5debd107d885/go.mod h1:7/RfrRFsRNu5d2rM/SN7US4MHGdrJPOlbYbV/dk8GU4=
 github.com/segmentio/kafka-go v0.4.47 h1:IqziR4pA3vrZq7YdRxaT3w1/5fvIH5qpCwstUanQQB0=
 github.com/segmentio/kafka-go v0.4.47/go.mod h1:HjF6XbOKh0Pjlkr5GVZxt6CsjjwnmhVOfURM5KMd8qg=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

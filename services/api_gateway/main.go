@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	identity_service_cnn, err := grpc.Dial("localhost:50056", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	identity_service_cnn, err := grpc.Dial("identity-service:50055", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Failed to connect to gRPC server: %v", err)
 	}
