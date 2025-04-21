@@ -2,8 +2,8 @@ package manager
 
 import (
 	"context"
+	_ "embed"
 	"log"
-	"os"
 	"time"
 
 	"github.com/MicahParks/keyfunc/v3"
@@ -12,23 +12,24 @@ import (
 )
 
 type Claims struct {
-	UserID   string                 `json:"username"`
-	Projects []map[string]uuid.UUID `json:"projects"`
+	UserID   string               `json:"username"`
+	Projects map[string]uuid.UUID `json:"projects"`
 	// Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
+//go:embed certs/private.pem
+var embeddedPrivateKey []byte
 var keyId string = "19c92999ceb1b952d80c6f90"
 
-func CreateToken(username string, projects []map[string]uuid.UUID) (string, error) {
-
-	secret, err := os.ReadFile("/Users/marinrazvan/Developer/datalake/services/jwt/certs/private.pem")
+func CreateToken(username string, projects map[string]uuid.UUID) (string, error) {
+	secretKey, err := jwt.ParseRSAPrivateKeyFromPEM(embeddedPrivateKey)
 	if err != nil {
 		return "", err
 	}
-	secretKey, err := jwt.ParseRSAPrivateKeyFromPEM(secret)
-	if err != nil {
-		return "", err
+
+	if projects == nil {
+		projects = make(map[string]uuid.UUID)
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256,
@@ -66,8 +67,25 @@ func ParseToken(tokenStr string) (Claims, error) {
 		log.Fatalf("Failed to cast the claims to jwt.MapClaims.\nError: %s", err)
 	}
 	log.Printf("Parsed claims: %v", claims)
+	rawProjects, ok := claims["projects"].(map[string]interface{})
+	if !ok {
+		log.Fatalf("Failed to parse 'projects' from claims")
+	}
+	projects := make(map[string]uuid.UUID)
+	for k, v := range rawProjects {
+		s, ok := v.(string)
+		if !ok {
+			log.Fatalf("Project ID is not a string: %v", v)
+		}
+		id, err := uuid.Parse(s)
+		if err != nil {
+			log.Fatalf("Invalid UUID format in project: %v", err)
+		}
+		projects[k] = id
+	}
+
 	return Claims{
 		UserID:   claims["username"].(string),
-		Projects: claims["projects"].([]map[string]uuid.UUID),
+		Projects: projects,
 	}, nil
 }

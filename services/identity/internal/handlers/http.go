@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"database/sql"
+	"log"
 
 	"context"
 	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/razvanmarinn/identity_service/internal/db"
 	"github.com/razvanmarinn/identity_service/internal/db/models"
 	kf "github.com/razvanmarinn/identity_service/internal/kafka"
@@ -32,12 +34,15 @@ func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter) *gin.Engine {
 			return
 		}
 		if err := db.RegisterUser(database, &user); err != nil {
+			log.Printf("Error registering user: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register user"})
 			return
 		}
+		projects := make(map[string]uuid.UUID)
 
-		tkn, err := manager.CreateToken(user.Username)
+		tkn, err := manager.CreateToken(user.Username, projects)
 		if err != nil {
+			log.Printf("Error creating token: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token"})
 			return
 		}
@@ -52,6 +57,7 @@ func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter) *gin.Engine {
 		}
 		user, err := db.GetUser(database, loginBody.Username)
 		if err != nil {
+			log.Printf("Error getting user: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user"})
 			return
 		}
@@ -63,8 +69,9 @@ func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter) *gin.Engine {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 			return
 		}
-
-		tkn, err := manager.CreateToken(loginBody.Username)
+		//
+		projects, err := db.GetProjects(database, user.Username)
+		tkn, err := manager.CreateToken(loginBody.Username, projects)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token"})
 			return

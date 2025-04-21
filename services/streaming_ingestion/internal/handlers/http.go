@@ -14,19 +14,22 @@ import (
 
 type IngestMessageBody struct {
 	SchemaName string                 `json:"schema_name" binding:"required"`
+	ProjectId  string                 `json:"project_id"`
 	Data       map[string]interface{} `json:"data" binding:"required"`
 }
 
 func SetupRouter(kf *kf.KafkaWriter) *gin.Engine {
 	r := gin.Default()
 
-	r.POST("/:project_name/ingest", func(c *gin.Context) {
+	r.POST("/ingest", func(c *gin.Context) {
 		var msg IngestMessageBody
-		project_name := c.Param("project_name")
 		if err := c.ShouldBindJSON(&msg); err != nil {
 			fmt.Printf("Error binding JSON: %v\n", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
+		}
+		if hdr := c.GetHeader("X-Project-ID"); hdr != "" {
+			msg.ProjectId = hdr
 		}
 
 		topicExists, err := kf.EnsureTopicExists(context.Background(), kf.TopicResolver.ResolveTopic(msg.SchemaName))
@@ -40,7 +43,7 @@ func SetupRouter(kf *kf.KafkaWriter) *gin.Engine {
 		}
 		jsonData, _ := json.Marshal(msg)
 
-		kf.WriteMessageForSchema(context.Background(), project_name, kafka.Message{
+		kf.WriteMessageForSchema(context.Background(), msg.ProjectId, kafka.Message{
 			Key:   []byte(msg.SchemaName),
 			Value: jsonData,
 		})

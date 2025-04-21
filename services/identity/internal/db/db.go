@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/google/uuid"
 	"github.com/razvanmarinn/identity_service/internal/db/models"
 
 	_ "github.com/lib/pq"
@@ -128,7 +129,6 @@ func CheckProjectExistence(db *sql.DB, projectName string) (bool, error) {
 	return exists, nil
 }
 
-
 func GetUser(db *sql.DB, username string) (*models.Client, error) {
 	query := `SELECT id, username, email, password FROM users WHERE username = $1`
 	row := db.QueryRow(query, username)
@@ -142,4 +142,37 @@ func GetUser(db *sql.DB, username string) (*models.Client, error) {
 		return nil, fmt.Errorf("error scanning user: %v", err)
 	}
 	return &user, nil
+}
+func GetProjects(db *sql.DB, username string) (map[string]uuid.UUID, error) {
+	query := `SELECT p.name, p.owner_id FROM project p
+			  JOIN users u ON p.owner_id = u.id
+			  WHERE u.username = $1`
+
+	rows, err := db.Query(query, username)
+	if err != nil {
+		return nil, fmt.Errorf("error querying projects: %v", err)
+	}
+	defer rows.Close()
+
+	projects := make(map[string]uuid.UUID)
+	for rows.Next() {
+		var name string
+		var idStr string
+		if err := rows.Scan(&name, &idStr); err != nil {
+			return nil, fmt.Errorf("error scanning project: %v", err)
+		}
+
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid UUID format for project owner_id: %v", err)
+		}
+
+		projects[name] = id
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over projects: %v", err)
+	}
+
+	return projects, nil
 }

@@ -5,7 +5,7 @@ go 1.23.4
 require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/razvanmarinn/datalake v0.0.0-20250417231049-4958177a0109
-	github.com/razvanmarinn/jwt v0.0.0-20250418201643-b18603eb142b
+	github.com/razvanmarinn/jwt v0.0.0-20250421214410-1e4f6c4824a6
 	google.golang.org/grpc v1.71.0
 )
 
@@ -23,6 +23,7 @@ require (
 	github.com/go-playground/validator/v10 v10.20.0 // indirect
 	github.com/goccy/go-json v0.10.3 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.2 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.7 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect

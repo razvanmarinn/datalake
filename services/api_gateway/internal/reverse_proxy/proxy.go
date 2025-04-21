@@ -6,6 +6,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 
+	"github.com/google/uuid"
 	"github.com/razvanmarinn/api_gateway/internal/handlers"
 	pb "github.com/razvanmarinn/datalake/protobuf"
 
@@ -42,7 +43,7 @@ func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL s
 			return
 		}
 
-		exists, err := handlers.CheckProjectExists(vs, projectName) 
+		exists, err := handlers.CheckProjectExists(vs, projectName)
 		if err != nil {
 			log.Printf("Error verifying project %s: %v", projectName, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify project existence"})
@@ -55,15 +56,37 @@ func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL s
 			c.Abort() // Stop processing
 			return
 		}
-		
+
+		userIDIfc, exists := c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing userID in context"})
+			return
+		}
+		userID := userIDIfc.(string)
+
+		projectsIfc, exists := c.Get("projects")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing projects in token"})
+			return
+		}
+		projects := projectsIfc.(map[string]uuid.UUID)
+
+		projectID, ok := projects[projectName]
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized for project: " + projectName})
+			return
+		}
+
+		c.Request.Header.Set("X-Project-ID", userID)
+		c.Request.Header.Set("X-User-ID", projectID.String())
+
 		log.Printf("Forwarding request for project %s to %s", projectName, target.Host)
-		c.Request.URL.Path = "/ingest" // Adjust if your target service needs a different path
+		c.Request.URL.Path = "/ingest" 
 
 		proxy.ServeHTTP(c.Writer, c.Request)
 
 	}
 }
-
 
 func SchemaRegistryProxy(targetServiceURL string) gin.HandlerFunc {
 
@@ -91,10 +114,38 @@ func SchemaRegistryProxy(targetServiceURL string) gin.HandlerFunc {
 		projectName := c.Param("project") // You can get the project name here
 		log.Printf("Forwarding schema request for project %s to %s", projectName, target.Host)
 
-
 		originalPath := c.Param("path") // Get the wildcard path part
+
+		userIDIfc, exists := c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing userID in context"})
+			return
+		}
+		userID := userIDIfc.(string)
+
+		projectsIfc, exists := c.Get("projects")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing projects in token"})
+			return
+		}
+		projects := projectsIfc.(map[string]string)
+
+		projectID, ok := projects[projectName]
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized for project: " + projectName})
+			return
+		}
+
+		c.Request.Header.Set("X-Project-ID", userID)
+		c.Request.Header.Set("X-User-ID", projectID)
+
 		c.Request.URL.Path = "/schema" + originalPath
 
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
 }
+
+// user -> api gateway ( jwt token and req )
+//  req (/streaming-ingestion/project_name)
+//  if project_name exists
+//  forward to streaming-ingestion service with project_id ( uuid )

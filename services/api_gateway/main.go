@@ -22,8 +22,8 @@ func main() {
 
 	r := gin.Default()
 	r.Use(middleware.AuthMiddleware())
-	r.Any("/ingest/:project/", reverse_proxy.StreamingIngestionProxy(vs, "http://localhost:50057"))
-	r.Any("/schema_registry/:project/*path", reverse_proxy.SchemaRegistryProxy("http://localhost:50058"))
+	r.Any("/ingest/:project/", reverse_proxy.StreamingIngestionProxy(vs, "http://streaming-ingestion:8080"))
+	r.Any("/schema_registry/:project/*path", reverse_proxy.SchemaRegistryProxy("http://schema-registry:8080"))
 
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
