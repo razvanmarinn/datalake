@@ -1,0 +1,25 @@
+
+FROM golang:1.23 AS builder
+WORKDIR /app
+# Add build arguments for GitHub credentials
+ARG GITHUB_PAT
+ENV GOPRIVATE=github.com/razvanmarinn/*
+
+# Configure Git to use HTTPS with credentials
+RUN git config --global url."https://${GITHUB_PAT}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+COPY . .
+
+
+WORKDIR /app/internal/master
+RUN CGO_ENABLED=0 GOOS=linux go build -o master .  # Build statically
+RUN ls -l  # Check if the binary exists
+
+FROM alpine:latest
+
+
+COPY --from=builder /app/internal/master/master .
+
+
+RUN chmod +x master
+
+CMD ["./master"]
