@@ -1,5 +1,5 @@
 [submodule "dfs"]
-	path = dfs
+	path = services/dfs
     url = https://github.com/razvanmarinn/dfs
     branch = main
 [submodule "rcss"]
