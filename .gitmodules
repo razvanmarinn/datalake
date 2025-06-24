@@ -8,6 +8,6 @@
     branch = main
 
 [submodule "schema_registry"]
-    path = services/schema_registry
-    url = https://github.com/razvanmarin/schema_registry
+    path = services/schema-registry
+    url = https://github.com/razvanmarin/schema-registry
     branch = main
