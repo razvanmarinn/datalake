@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: ingestion-consumer
-          image: datalake/ingestion-consumer:latest # Consider using a specific version tag instead of 'latest'
+          image: datalake/ingestion:latest # Consider using a specific version tag instead of 'latest'
           imagePullPolicy: IfNotPresent
           env:
             - name: KAFKA_BROKERS

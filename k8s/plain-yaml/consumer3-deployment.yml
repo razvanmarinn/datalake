@@ -17,7 +17,7 @@ spec:
       containers:
         - name: ingestion-consumer
           # Make sure this image is accessible from your Kubernetes cluster
-          image: datalake/ingestion-consumer:latest
+          image: datalake/ingestion:latest
           imagePullPolicy: IfNotPresent # Or Always if needed
           env:
             - name: KAFKA_BROKERS
