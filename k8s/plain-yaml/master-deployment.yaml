@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: master
-          image: dfs-master:latest
+          image: datalake/master:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50055

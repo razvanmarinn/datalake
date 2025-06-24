@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: schema-registry
-          image: schema-registry:latest
+          image: datalake/schema_registry:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081
@@ -112,8 +112,8 @@ metadata:
   name: postgres-secret
 type: Opaque
 data:
-  postgres-password: cG9zdGdyZXNwYXNzd29yZA==  # base64 encoded "postgrespassword"
-  postgres-user: cG9zdGdyZXN1c2Vy  # base64 encoded "postgresuser"
+  postgres-password: cG9zdGdyZXNwYXNzd29yZA== # base64 encoded "postgrespassword"
+  postgres-user: cG9zdGdyZXN1c2Vy # base64 encoded "postgresuser"
 ---
 apiVersion: apps/v1
 kind: Deployment

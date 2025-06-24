@@ -19,14 +19,13 @@ spec:
       targetPort: 50051
   type: ClusterIP
 
-
---- 
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api-gateway
   labels:
-    app.kubernetes.io/name: api-gateway 
+    app.kubernetes.io/name: api-gateway
 spec:
   replicas: 1
   selector:
@@ -39,7 +38,7 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: api_gateway:latest
+          image: datalake/api_gateway:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

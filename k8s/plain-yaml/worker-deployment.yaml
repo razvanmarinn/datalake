@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: dfs-worker:latest
+          image: datalake/worker:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 50051

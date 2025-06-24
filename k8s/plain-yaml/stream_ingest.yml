@@ -14,13 +14,13 @@ spec:
     spec:
       containers:
         - name: streaming-ingestion
-          image: streaming_ingestion:latest
+          image: datalake/streaming_ingestion:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:
             - name: KAFKA_BROKERS
-              value: "kafka-headless.kafka.svc.cluster.local:9092"     
+              value: "kafka-headless.kafka.svc.cluster.local:9092"
 ---
 apiVersion: v1
 kind: Service

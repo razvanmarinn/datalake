@@ -14,41 +14,41 @@ spec:
         app: ingestion-consumer-test1
     spec:
       containers:
-      - name: ingestion-consumer
-        image: ingestion-consumer:latest # Consider using a specific version tag instead of 'latest'
-        imagePullPolicy: IfNotPresent
-        env:
-        - name: KAFKA_BROKERS
-          # Corrected FQDNs for brokers in the 'kafka' namespace
-          value: "kafka-0.kafka-headless.kafka.svc.cluster.local:9092,kafka-1.kafka-headless.kafka.svc.cluster.local:9092,kafka-2.kafka-headless.kafka.svc.cluster.local:9092"
-        - name: KAFKA_TOPIC
-          value: "raw_test1"
-        - name: KAFKA_GROUP_ID
-          value: "ingestion-consumers-test1"
-        - name: SCHEMA_REGISTRY_HOST
-          value: "schema-registry.default.svc.cluster.local"
-        - name: SCHEMA_REGISTRY_PORT
-          value: "8081"
-        - name: MASTER_SERVICE_PORT
-          value: "50055"
-        # Add resource requests/limits for better pod scheduling
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "100m"
-          limits:
-            memory: "512Mi"
-            cpu: "250m"
-        # Add liveness and readiness probes if you have an HTTP endpoint for health checks
-        # livenessProbe:
-        #   httpGet:
-        #     path: /health
-        #     port: 8080
-        #   initialDelaySeconds: 10
-        #   periodSeconds: 60
-        # readinessProbe:
-        #   httpGet:
-        #     path: /ready
-        #     port: 8080
-        #   initialDelaySeconds: 5
-        #   periodSeconds: 10
+        - name: ingestion-consumer
+          image: datalake/ingestion-consumer:latest # Consider using a specific version tag instead of 'latest'
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BROKERS
+              # Corrected FQDNs for brokers in the 'kafka' namespace
+              value: "kafka-0.kafka-headless.kafka.svc.cluster.local:9092,kafka-1.kafka-headless.kafka.svc.cluster.local:9092,kafka-2.kafka-headless.kafka.svc.cluster.local:9092"
+            - name: KAFKA_TOPIC
+              value: "raw_test1"
+            - name: KAFKA_GROUP_ID
+              value: "ingestion-consumers-test1"
+            - name: SCHEMA_REGISTRY_HOST
+              value: "schema-registry.default.svc.cluster.local"
+            - name: SCHEMA_REGISTRY_PORT
+              value: "8081"
+            - name: MASTER_SERVICE_PORT
+              value: "50055"
+          # Add resource requests/limits for better pod scheduling
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "250m"
+          # Add liveness and readiness probes if you have an HTTP endpoint for health checks
+          # livenessProbe:
+          #   httpGet:
+          #     path: /health
+          #     port: 8080
+          #   initialDelaySeconds: 10
+          #   periodSeconds: 60
+          # readinessProbe:
+          #   httpGet:
+          #     path: /ready
+          #     port: 8080
+          #   initialDelaySeconds: 5
+          #   periodSeconds: 10

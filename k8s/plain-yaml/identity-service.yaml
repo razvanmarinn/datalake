@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: identity-service
-          image: identity_service:latest
+          image: datalake/identity:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8082
@@ -42,8 +42,8 @@ metadata:
   name: identity-postgres-secret
 type: Opaque
 data:
-  postgres-password: aWRlbnRpdHlwYXNzd29yZA==  # base64 for "identitypassword"
-  postgres-user: aWRlbnRpdHl1c2Vy  # base64 for "identityuser"
+  postgres-password: aWRlbnRpdHlwYXNzd29yZA== # base64 for "identitypassword"
+  postgres-user: aWRlbnRpdHl1c2Vy # base64 for "identityuser"
 ---
 apiVersion: v1
 kind: PersistentVolume
