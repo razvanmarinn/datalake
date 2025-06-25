@@ -1,4 +1,4 @@
-module github.com/razvanmarinn/jwt
+module github.com/razvanmarinn/datalake/services/jwt
 
 go 1.23.4
 
