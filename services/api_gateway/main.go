@@ -12,14 +12,14 @@ import (
 	"github.com/razvanmarinn/api_gateway/internal/reverse_proxy"
 	pb "github.com/razvanmarinn/datalake/protobuf"
 	middleware "github.com/razvanmarinn/datalake/services/jwt/middleware"
-
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
-
+	"go.opentelemetry.io/otel/trace" // ADD THIS IMPORT
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -29,12 +29,10 @@ func initTracer(ctx context.Context) func(context.Context) error {
 	if err != nil {
 		log.Fatalf("failed to create gRPC connection to collector: %v", err)
 	}
-
 	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
 	if err != nil {
 		log.Fatalf("failed to create OTLP trace exporter: %v", err)
 	}
-
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName("api-gateway"),
@@ -43,14 +41,34 @@ func initTracer(ctx context.Context) func(context.Context) error {
 	if err != nil {
 		log.Fatalf("failed to create resource: %v", err)
 	}
-
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
 	)
 	otel.SetTracerProvider(tp)
 
+	// ADD THIS: Configure trace propagation
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+
+	log.Println("OpenTelemetry tracer initialized with propagation")
 	return tp.Shutdown
+}
+
+// ADD THIS: Debug middleware to verify trace creation
+func traceDebugMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check if we have a trace after otelgin middleware
+		span := trace.SpanFromContext(c.Request.Context()) // FIXED: use trace.SpanFromContext
+		if span.SpanContext().IsValid() {
+			log.Printf("[API-GATEWAY] ★ Trace created: %s", span.SpanContext().TraceID().String())
+		} else {
+			log.Printf("[API-GATEWAY] ✗ No trace context found")
+		}
+		c.Next()
+	}
 }
 
 func main() {
@@ -68,8 +86,9 @@ func main() {
 
 	r := gin.Default()
 
-	// ✅ Add OpenTelemetry Gin middleware
+	// Order matters: OpenTelemetry first to create traces
 	r.Use(otelgin.Middleware("api-gateway"))
+	r.Use(traceDebugMiddleware()) // ADD THIS: Debug middleware
 	r.Use(middleware.AuthMiddleware())
 
 	r.Any("/ingest/:project/", reverse_proxy.StreamingIngestionProxy(vs, "http://streaming-ingestion:8080"))
@@ -91,7 +110,6 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down server...")
-
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatal("Server forced to shutdown:", err)
 	}
