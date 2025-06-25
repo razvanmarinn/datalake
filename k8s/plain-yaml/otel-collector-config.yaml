@@ -12,8 +12,8 @@ data:
           http:
 
     exporters:
-      jaeger:
-        endpoint: jaeger-collector.observability.svc.cluster.local:14250
+      otlp: # Change jaeger_thrift to otlp
+        endpoint: jaeger-collector.observability.svc.cluster.local:4317
         tls:
           insecure: true
 
@@ -21,4 +21,4 @@ data:
       pipelines:
         traces:
           receivers: [otlp]
-          exporters: [jaeger]
+          exporters: [otlp]
