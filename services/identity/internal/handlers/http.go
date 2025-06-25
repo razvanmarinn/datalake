@@ -10,10 +10,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/razvanmarinn/datalake/services/jwt/manager"
 	"github.com/razvanmarinn/identity_service/internal/db"
 	"github.com/razvanmarinn/identity_service/internal/db/models"
 	kf "github.com/razvanmarinn/identity_service/internal/kafka"
-	"github.com/razvanmarinn/jwt/manager"
 
 	"github.com/segmentio/kafka-go"
 )

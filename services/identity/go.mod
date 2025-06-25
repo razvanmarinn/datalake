@@ -6,11 +6,10 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
-	github.com/razvanmarinn/datalake v0.0.0-20250417231049-4958177a0109
-	github.com/razvanmarinn/jwt v0.0.0-20250419191127-f0759d53a561
+	github.com/razvanmarinn/datalake v0.0.0-20250625211233-b1f4d4b70edc
+	github.com/razvanmarinn/datalake/services/jwt v0.0.0-20250625211233-b1f4d4b70edc
 	github.com/segmentio/kafka-go v0.4.47
 	google.golang.org/grpc v1.71.0
-
 )
 
 require (
