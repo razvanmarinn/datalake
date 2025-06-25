@@ -6,11 +6,12 @@ import (
 	"net/http/httputil"
 	"net/url"
 
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/razvanmarinn/api_gateway/internal/handlers"
 	pb "github.com/razvanmarinn/datalake/protobuf"
-
-	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL string) gin.HandlerFunc {
@@ -26,7 +27,7 @@ func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL s
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
 		req.Host = target.Host
-
+		otel.GetTextMapPropagator().Inject(req.Context(), propagation.HeaderCarrier(req.Header))
 	}
 
 	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
@@ -81,7 +82,7 @@ func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL s
 		c.Request.Header.Set("X-User-ID", projectID.String())
 
 		log.Printf("Forwarding request for project %s to %s", projectName, target.Host)
-		c.Request.URL.Path = "/ingest" 
+		c.Request.URL.Path = "/ingest"
 
 		proxy.ServeHTTP(c.Writer, c.Request)
 

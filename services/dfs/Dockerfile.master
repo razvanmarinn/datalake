@@ -1,12 +1,6 @@
 
 FROM golang:1.23 AS builder
 WORKDIR /app
-# Add build arguments for GitHub credentials
-ARG GITHUB_PAT
-ENV GOPRIVATE=github.com/razvanmarinn/*
-
-# Configure Git to use HTTPS with credentials
-RUN git config --global url."https://${GITHUB_PAT}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
 COPY . .
 
 

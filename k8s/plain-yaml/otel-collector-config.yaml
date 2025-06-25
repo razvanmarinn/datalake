@@ -9,13 +9,21 @@ data:
       otlp:
         protocols:
           grpc:
+            # Explicitly set the endpoint to listen on all network interfaces
+            # for gRPC, which is the default OTLP gRPC port.
+            endpoint: 0.0.0.0:4317
           http:
+            # Explicitly set the endpoint to listen on all network interfaces
+            # for HTTP, which is the default OTLP HTTP port.
+            endpoint: 0.0.0.0:4318
 
     exporters:
-      otlp: # Change jaeger_thrift to otlp
+      # This 'otlp' exporter is for sending data *from* the collector
+      # *to* Jaeger. Ensure Jaeger is configured to receive OTLP on 4317.
+      otlp:
         endpoint: jaeger-collector.observability.svc.cluster.local:4317
         tls:
-          insecure: true
+          insecure: true # Use this only for development/testing, not production
 
     service:
       pipelines:

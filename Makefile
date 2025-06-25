@@ -5,7 +5,7 @@ SERVICES = \
     services/identity \
     services/jwt \
     services/rcss \
-    services/schema_registry \
+    services/schema-registry \
     services/streaming_ingestion
 
 
@@ -21,9 +21,9 @@ docker-env:
 
 build-dfs:
 	@echo "🔧 Building dfs/master..."
-	docker build -f services/dfs/Dockerfile.master -t datalake/master:latest dfs
+	docker build -f services/dfs/Dockerfile.master -t datalake/master:latest services/dfs
 	@echo "🔧 Building dfs/worker..."
-	docker build -f services/dfs/Dockerfile.worker -t datalake/worker:latest dfs
+	docker build -f services/dfs/Dockerfile.worker -t datalake/worker:latest services/dfs
 
 build-services:
 	@for svc in $(SERVICES); do \
