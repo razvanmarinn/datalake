@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: ingestion-consumer-test3
   # Optional: Specify the namespace if your consumer isn't in the 'default' namespace
-  # namespace: your-consumer-namespace
+  namespace: datalake
 spec:
   replicas: 2
   selector:

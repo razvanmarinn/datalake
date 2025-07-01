@@ -2,7 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ingestion-consumer-test1
-  namespace: default # Explicitly state the namespace for clarity
+  namespace: datalake # Explicitly state the namespace for clarity
 spec:
   replicas: 2
   selector:

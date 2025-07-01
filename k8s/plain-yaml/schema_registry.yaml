@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: schema-registry
-          image: datalake/schema_registry:latest
+          image: datalake/schema-registry:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081
