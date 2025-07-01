@@ -92,6 +92,8 @@ spec:
   resources:
     requests:
       storage: 1Gi
+  storageClassName: standard # <-- ADDED THIS LINE
+  volumeName: postgres-pv # <-- ADDED THIS LINE
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -103,6 +105,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard # <-- ADDED THIS LINE
   hostPath:
     path: /data/postgres
 ---
