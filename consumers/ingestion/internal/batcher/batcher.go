@@ -52,6 +52,19 @@ func (mb *MessageBatch) Size() int {
 	return len(mb.Messages)
 }
 
+func (mb *MessageBatch) Copy() *MessageBatch {
+	// Create a new slice with the same capacity.
+	messagesCopy := make([]Message, len(mb.Messages))
+	// Copy the messages from the original slice to the new one.
+	copy(messagesCopy, mb.Messages)
+
+	return &MessageBatch{
+		Topic:    mb.Topic,
+		Messages: messagesCopy,
+		UUID:     mb.UUID,
+	}
+}
+
 func (mb *MessageBatch) Clean() {
 	mb.Messages = make([]Message, 0)
 }

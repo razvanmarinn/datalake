@@ -4,18 +4,56 @@ import (
 	"encoding/json"
 	"net/http"
 
-	kf "github.com/razvanmarinn/streaming_ingestion/internal/kafka"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/gin-gonic/gin"
+	kf "github.com/razvanmarinn/streaming_ingestion/internal/kafka"
 	"github.com/segmentio/kafka-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
+)
+
+var propagator = propagation.NewCompositeTextMapPropagator(
+	propagation.TraceContext{},
+	propagation.Baggage{},
 )
 
 type IngestMessageBody struct {
 	SchemaName string                 `json:"schema_name" binding:"required"`
 	ProjectId  string                 `json:"project_id"`
 	Data       map[string]interface{} `json:"data" binding:"required"`
+}
+type kafkaHeaderCarrier struct {
+	headers *[]kafka.Header
+}
+
+func (c *kafkaHeaderCarrier) Get(key string) string {
+	for _, h := range *c.headers {
+		if h.Key == key {
+			return string(h.Value)
+		}
+	}
+	return ""
+}
+
+func (c *kafkaHeaderCarrier) Set(key, val string) {
+	for i, h := range *c.headers {
+		if h.Key == key {
+			(*c.headers)[i].Value = []byte(val)
+			return
+		}
+	}
+	*c.headers = append(*c.headers, kafka.Header{
+		Key:   key,
+		Value: []byte(val),
+	})
+}
+
+func (c *kafkaHeaderCarrier) Keys() []string {
+	keys := make([]string, len(*c.headers))
+	for i, h := range *c.headers {
+		keys[i] = h.Key
+	}
+	return keys
 }
 
 func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter) *gin.Engine {
@@ -58,9 +96,16 @@ func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter) *gin.Engine {
 			defer child.End()
 
 			jsonData, _ := json.Marshal(msg)
+
+			// Inject trace context into Kafka headers
+			headers := make([]kafka.Header, 0)
+			carrier := kafkaHeaderCarrier{headers: &headers}
+			propagator.Inject(ctx, &carrier)
+
 			kf.WriteMessageForSchema(ctx, msg.ProjectId, kafka.Message{
-				Key:   []byte(msg.SchemaName),
-				Value: jsonData,
+				Key:     []byte(msg.SchemaName),
+				Value:   jsonData,
+				Headers: headers,
 			})
 		}()
 

@@ -21,7 +21,7 @@ func NewKafkaTopicResolver() *KafkaTopicResolver {
 }
 
 func (k *KafkaTopicResolver) ResolveTopic(projectName string) string {
-	return "raw_" + projectName
+	return "raw_test1"
 }
 
 func NewKafkaWriter(brokers []string) *KafkaWriter {
@@ -54,7 +54,6 @@ func (k *KafkaWriter) EnsureTopicExists(ctx context.Context, topic string) (bool
 
 func (k *KafkaWriter) WriteMessageForSchema(ctx context.Context, projectName string, message kafka.Message) error {
 	topic := k.TopicResolver.ResolveTopic(projectName)
-
 
 	topicMessage := message
 	topicMessage.Topic = topic

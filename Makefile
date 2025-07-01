@@ -46,3 +46,12 @@ clean:
 		docker rmi -f datalake/$$name:latest || true; \
 	done
 	docker rmi -f datalake/master:latest datalake/worker:latest || true
+
+
+pfa:
+	kubectl port-forward -n argocd svc/argocd-server 8080:443&
+
+port-forward:
+	kubectl port-forward -n datalake svc/api-gateway 8083:80&
+	kubectl port-forward -n observability svc/jaeger-query 16686:16686&
+	kubectl port-forward -n datalake svc/identity-service 8082:8082&
