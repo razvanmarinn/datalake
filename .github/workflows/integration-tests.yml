@@ -14,11 +14,35 @@ jobs:
 
       - name: Install Minikube and kubectl
         run: |
+          # Set -e: Exit immediately if a command exits with a non-zero status.
+          # Set -u: Treat unset variables as an error.
+          # Set -x: Print commands and their arguments as they are executed.
+          # Set -o pipefail: The return value of a pipeline is the status of the last command to exit with a non-zero status.
+          set -euxo pipefail
+
+          # Install Minikube
+          echo "Downloading Minikube..."
           curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-          sudo install minikube-linux-amd64 /usr/local/bin/minikube
+          echo "Moving Minikube to /usr/local/bin and making it executable..."
+          sudo mv minikube-linux-amd64 /usr/local/bin/minikube
+          sudo chmod +x /usr/local/bin/minikube
+
+          # Install kubectl
+          echo "Downloading kubectl..."
           curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-          # No need to install argocd CLI now
+          echo "Moving kubectl to /usr/local/bin and making it executable..."
+          sudo mv kubectl /usr/local/bin/kubectl
+          sudo chmod +x /usr/local/bin/kubectl
+
+          # Verify installations
+          echo "Verifying Minikube and kubectl installations..."
+          ls -l /usr/local/bin/minikube
+          file /usr/local/bin/minikube
+          minikube version
+
+          ls -l /usr/local/bin/kubectl
+          file /usr/local/bin/kubectl
+          kubectl version --client
 
       - name: Setup K8s Environment (Minikube & Deploy Apps)
         run: |
