@@ -75,8 +75,11 @@ jobs:
           sleep 5
 
           echo "Waiting for all deployments to be ready..."
-          # MODIFICATION: Wait for ALL deployments in the namespace to be available. This is more robust.
           kubectl wait --for=condition=available --timeout=300s deployment --all -n "${DYNAMIC_NAMESPACE}"
+
+          echo "Waiting for all statefulsets to be ready..."
+          # MODIFICATION: Wait for the Kafka statefulset to complete its rollout.
+          kubectl rollout status statefulset/kafka -n "${DYNAMIC_NAMESPACE}" --timeout=300s
 
           echo "Setup complete! All pods are ready."
         env:
@@ -87,6 +90,25 @@ jobs:
           #!/bin/bash
           set -euxo pipefail
 
+          # This function waits for a port to be open on localhost without using 'timeout'
+          wait_for_port() {
+            local port=$1
+            local service_name=$2
+            echo "Waiting for port ${port} (${service_name}) to be open..."
+
+            for i in $(seq 1 60); do
+              if nc -z localhost "${port}"; then
+                echo "Port ${port} is open."
+                return 0
+              fi
+              echo "Attempt ${i}/60: Port ${port} is not yet open. Waiting 1s..."
+              sleep 1
+            done
+
+            echo "Error: Timed out after 60 seconds waiting for port ${port}."
+            exit 1
+          }
+
           echo "Setting up port-forwarding..."
           kubectl port-forward svc/identity-service 8082:8082 -n "${DYNAMIC_NAMESPACE}" > /tmp/identity-pf.log 2>&1 &
           echo $! > port-forward.pid
@@ -94,11 +116,9 @@ jobs:
           kubectl port-forward svc/api-gateway 8083:80 -n "${DYNAMIC_NAMESPACE}" > /tmp/gateway-pf.log 2>&1 &
           echo $! >> port-forward.pid
 
-          echo "Waiting for port 8082 (identity-service) to be open..."
-          timeout 60s bash -c "until nc -z localhost 8082; do echo 'Waiting...'; sleep 1; done"
-
-          echo "Waiting for port 8083 (api-gateway) to be open..."
-          timeout 60s bash -c "until nc -z localhost 8083; do echo 'Waiting...'; sleep 1; done"
+          # MODIFICATION: Use the portable wait function instead of timeout
+          wait_for_port 8082 "identity-service"
+          wait_for_port 8083 "api-gateway"
 
           echo "Port forwarding appears to be active."
         env:
@@ -138,9 +158,10 @@ jobs:
           kubectl get endpoints -n "${DYNAMIC_NAMESPACE}"
           echo "--- Kubernetes Deployment Status ---"
           kubectl get deployment -n "${DYNAMIC_NAMESPACE}"
+          echo "--- Kubernetes StatefulSet Status ---"
+          kubectl get statefulset -n "${DYNAMIC_NAMESPACE}"
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
-          # MODIFICATION: Added KUBECONFIG so kubectl works in this step.
           KUBECONFIG: ~/.kube/config
 
       - name: Teardown Minikube Cluster
