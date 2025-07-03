@@ -22,15 +22,13 @@ jobs:
 
           # Install Minikube
           echo "Downloading Minikube..."
-          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-          echo "Moving Minikube to /usr/local/bin and making it executable..."
-          sudo mv minikube-linux-amd64 /usr/local/bin/minikube
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-darwin-arm64
+          sudo mv minikube-darwin-arm64 /usr/local/bin/minikube
           sudo chmod +x /usr/local/bin/minikube
 
           # Install kubectl
           echo "Downloading kubectl..."
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          echo "Moving kubectl to /usr/local/bin and making it executable..."
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/darwin/arm64/kubectl"
           sudo mv kubectl /usr/local/bin/kubectl
           sudo chmod +x /usr/local/bin/kubectl
 
