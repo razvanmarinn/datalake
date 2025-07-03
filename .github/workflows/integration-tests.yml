@@ -1,0 +1,53 @@
+name: K8s E2E Test Pipeline
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  e2e-test:
+    runs-on: self-hosted
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Minikube and kubectl
+        run: |
+          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          sudo install minikube-linux-amd64 /usr/local/bin/minikube
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+          # No need to install argocd CLI now
+
+      - name: Setup K8s Environment (Minikube & Deploy Apps)
+        run: |
+          #!/bin/bash
+          minikube delete || true # Ensure it doesn't fail if no cluster exists
+          minikube start --driver=docker # Specify driver for CI environments
+          eval $(minikube docker-env)
+          make # Ensure your Makefile is available and configured for CI
+
+          sleep 10
+
+          kubectl create ns observability || true
+          kubectl create ns kafka || true
+          kubectl create ns datalake || true
+
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.12.2/cert-manager.yaml
+
+          sleep 40 # Consider using kubectl wait for more robustness
+
+          echo "Applying datalake application manifests..."
+          kubectl apply -n datalake -f https://github.com/razvanmarinn/datalake/k8s/plain-yaml/
+
+          echo "Setup complete!"
+        env:
+          KUBECONFIG: ~/.kube/config
+
+      # - name: Run E2E Tests
+      #   run: |
+
+      - name: Teardown Minikube Cluster
+        if: always()
+        run: minikube delete

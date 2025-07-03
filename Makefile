@@ -1,3 +1,20 @@
+
+
+NAMESPACE=datalake
+
+IMAGES= \
+	api \
+	api-gateway \
+	identity-service \
+	ingestion-consumer-test1 \
+	ingestion-consumer-test2 \
+	ingestion-consumer-test3 \
+	master \
+	streaming-ingestion \
+	worker-1 \
+	worker-2 \
+	worker-3
+
 SERVICES = \
     consumers/ingestion \
     services/api_gateway \
@@ -11,7 +28,7 @@ SERVICES = \
 
 export DOCKER_BUILDKIT=1
 
-.PHONY: all docker-env build-docker build-push clean
+.PHONY: all docker-env build-docker build-push clean update-all
 
 all: docker-env build-dfs build-services
 
@@ -55,3 +72,17 @@ port-forward:
 	kubectl port-forward -n datalake svc/api-gateway 8083:80&
 	kubectl port-forward -n observability svc/jaeger-query 16686:16686&
 	kubectl port-forward -n datalake svc/identity-service 8082:8082&
+
+
+
+
+update-all: use-minikube-docker build-images rollout
+
+use-minikube-docker:
+	eval $$(minikube docker-env)
+
+rollout:
+	@for deploy in $(IMAGES); do \
+		echo "Restarting deployment $$deploy in namespace $(NAMESPACE)..."; \
+		kubectl rollout restart deployment $$deploy -n $(NAMESPACE); \
+	done
