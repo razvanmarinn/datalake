@@ -15,7 +15,6 @@ jobs:
       - name: Install Minikube and kubectl
         run: |
           set -euxo pipefail
-          # This step is mostly unchanged but includes a check to see if tools are already installed.
           OS_TYPE=$(uname -s | tr '[:upper:]' '[:lower:]')
           ARCH_TYPE=$(uname -m)
           if [[ "${ARCH_TYPE}" == "aarch64" ]]; then
@@ -30,7 +29,6 @@ jobs:
           fi
 
           MINIKUBE_BINARY="minikube-${OS_TYPE}-${ARCH_TYPE}"
-          KUBECTL_BINARY="kubectl"
           echo "Detected OS: ${OS_TYPE}, Architecture: ${ARCH_TYPE}"
           echo "Downloading Minikube..."
           curl -LO "https://storage.googleapis.com/minikube/releases/latest/${MINIKUBE_BINARY}"
@@ -38,9 +36,9 @@ jobs:
           sudo chmod +x /usr/local/bin/minikube
 
           echo "Downloading kubectl..."
-          KUBECTL_DOWNLOAD_URL="https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/${OS_TYPE}/${ARCH_TYPE}/${KUBECTL_BINARY}"
+          KUBECTL_DOWNLOAD_URL="https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/${OS_TYPE}/${ARCH_TYPE}/kubectl"
           curl -LO "${KUBECTL_DOWNLOAD_URL}"
-          sudo mv "${KUBECTL_BINARY}" /usr/local/bin/kubectl
+          sudo mv "kubectl" /usr/local/bin/kubectl
           sudo chmod +x /usr/local/bin/kubectl
 
           echo "Verifying installations..."
@@ -59,9 +57,9 @@ jobs:
           make
 
           NAMESPACE_DATE=$(date +%Y%m%d)
-          DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}"
+          DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}-${RANDOM}"
           echo "Creating namespace: ${DYNAMIC_NAMESPACE}"
-          kubectl create ns "${DYNAMIC_NAMESPACE}" || true
+          kubectl create ns "${DYNAMIC_NAMESPACE}"
           echo "DYNAMIC_NAMESPACE=${DYNAMIC_NAMESPACE}" >> $GITHUB_ENV
 
           echo "Substituting namespace in manifests..."
@@ -73,13 +71,14 @@ jobs:
           echo "Applying application manifests to namespace: ${DYNAMIC_NAMESPACE}..."
           kubectl apply -f ./k8s/test-env/
 
-          echo "Waiting for deployments to be ready..."
-          # This is a critical change. It waits for the deployments to be fully available.
-          # Note: Adjust deployment names if they differ from service names.
-          kubectl wait --for=condition=available --timeout=300s deployment/identity-service -n "${DYNAMIC_NAMESPACE}"
-          kubectl wait --for=condition=available --timeout=300s deployment/api-gateway -n "${DYNAMIC_NAMESPACE}"
+          echo "Pausing for 5 seconds to allow API server to process new objects..."
+          sleep 5
 
-          echo "Setup complete! Pods are ready."
+          echo "Waiting for all deployments to be ready..."
+          # MODIFICATION: Wait for ALL deployments in the namespace to be available. This is more robust.
+          kubectl wait --for=condition=available --timeout=300s deployment --all -n "${DYNAMIC_NAMESPACE}"
+
+          echo "Setup complete! All pods are ready."
         env:
           KUBECONFIG: ~/.kube/config
 
@@ -89,23 +88,22 @@ jobs:
           set -euxo pipefail
 
           echo "Setting up port-forwarding..."
-          # Log output to files for easier debugging if something goes wrong
           kubectl port-forward svc/identity-service 8082:8082 -n "${DYNAMIC_NAMESPACE}" > /tmp/identity-pf.log 2>&1 &
           echo $! > port-forward.pid
 
           kubectl port-forward svc/api-gateway 8083:80 -n "${DYNAMIC_NAMESPACE}" > /tmp/gateway-pf.log 2>&1 &
           echo $! >> port-forward.pid
 
-          # This is the second critical change. It replaces 'sleep' with an active check.
           echo "Waiting for port 8082 (identity-service) to be open..."
-          timeout 30s bash -c "until nc -z localhost 8082; do echo 'Waiting...'; sleep 1; done"
+          timeout 60s bash -c "until nc -z localhost 8082; do echo 'Waiting...'; sleep 1; done"
 
           echo "Waiting for port 8083 (api-gateway) to be open..."
-          timeout 30s bash -c "until nc -z localhost 8083; do echo 'Waiting...'; sleep 1; done"
+          timeout 60s bash -c "until nc -z localhost 8083; do echo 'Waiting...'; sleep 1; done"
 
           echo "Port forwarding appears to be active."
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
+          KUBECONFIG: ~/.kube/config
 
       - name: Setup Go environment
         uses: actions/setup-go@v5
@@ -117,12 +115,12 @@ jobs:
         run: |
           #!/bin/bash
           set -euxo pipefail
-          export KUBECONFIG=~/.kube/config
           echo "Running Go integration tests..."
           cd test/integration
           go test -v ./...
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
+          KUBECONFIG: ~/.kube/config
 
       - name: Dump Logs on Failure
         if: failure()
@@ -138,16 +136,18 @@ jobs:
           kubectl get svc -n "${DYNAMIC_NAMESPACE}"
           echo "--- Kubernetes Endpoints Status ---"
           kubectl get endpoints -n "${DYNAMIC_NAMESPACE}"
+          echo "--- Kubernetes Deployment Status ---"
+          kubectl get deployment -n "${DYNAMIC_NAMESPACE}"
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
+          # MODIFICATION: Added KUBECONFIG so kubectl works in this step.
+          KUBECONFIG: ~/.kube/config
 
       - name: Teardown Minikube Cluster
         if: always()
         run: |
-          # Kill all port-forward processes whose PIDs are stored in the file
           if [ -f port-forward.pid ]; then
             echo "Killing port-forward processes..."
-            # Use xargs to kill all PIDs at once. The '|| true' prevents failure if processes are already gone.
             xargs kill < port-forward.pid || true
             rm port-forward.pid
           fi
