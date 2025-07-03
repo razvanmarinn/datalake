@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion-consumer-test1
+  namespace: __DYNAMIC_NAMESPACE__ # Placeholder for the dynamic namespace
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ingestion-consumer-test1
+  template:
+    metadata:
+      labels:
+        app: ingestion-consumer-test1
+    spec:
+      containers:
+        - name: ingestion-consumer
+          image: datalake/ingestion:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_BROKERS
+              # Assuming Kafka is also deployed in the same __DYNAMIC_NAMESPACE__
+              value: "kafka-0.kafka-headless.__DYNAMIC_NAMESPACE__.svc.cluster.local:9092"
+            - name: KAFKA_TOPIC
+              value: "raw_test1"
+            - name: KAFKA_GROUP_ID
+              value: "ingestion-consumers-test1"
+            - name: SCHEMA_REGISTRY_HOST
+              # Assuming Schema Registry is also deployed in the same __DYNAMIC_NAMESPACE__
+              value: "schema-registry.__DYNAMIC_NAMESPACE__.svc.cluster.local"
+            - name: SCHEMA_REGISTRY_PORT
+              value: "8081"
+            - name: MASTER_SERVICE_PORT
+              value: "50055"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "250m"

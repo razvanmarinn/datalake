@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker-1
+  template:
+    metadata:
+      labels:
+        app: worker-1
+    spec:
+      containers:
+        - name: worker
+          image: datalake/worker:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 50051
+          env:
+            - name: GRPC_PORT
+              value: ":50051"
+          volumeMounts:
+            - name: worker-state-storage
+              mountPath: /data # Mount path in the container
+      volumes:
+        - name: worker-state-storage
+          persistentVolumeClaim:
+            claimName: worker1-state-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-1
+spec:
+  type: ClusterIP
+  ports:
+    - port: 50051
+      targetPort: 50051
+  selector:
+    app: worker-1
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker-2
+  template:
+    metadata:
+      labels:
+        app: worker-2
+    spec:
+      containers:
+        - name: worker
+          image: datalake/worker:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 50052
+          env:
+            - name: GRPC_PORT
+              value: ":50052"
+          volumeMounts:
+            - name: worker-state-storage
+              mountPath: /data
+      volumes:
+        - name: worker-state-storage
+          persistentVolumeClaim:
+            claimName: worker2-state-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-2
+spec:
+  type: ClusterIP
+  ports:
+    - port: 50052
+      targetPort: 50052
+  selector:
+    app: worker-2
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-3
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker-3
+  template:
+    metadata:
+      labels:
+        app: worker-3
+    spec:
+      containers:
+        - name: worker
+          image: datalake/worker:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 50053
+          env:
+            - name: GRPC_PORT
+              value: ":50053"
+          volumeMounts:
+            - name: worker-state-storage
+              mountPath: /data
+      volumes:
+        - name: worker-state-storage
+          persistentVolumeClaim:
+            claimName: worker3-state-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-3
+spec:
+  type: ClusterIP
+  ports:
+    - port: 50053
+      targetPort: 50053
+  selector:
+    app: worker-3

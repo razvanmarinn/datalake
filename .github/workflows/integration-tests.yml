@@ -14,30 +14,31 @@ jobs:
 
       - name: Install Minikube and kubectl
         run: |
-          # Set -e: Exit immediately if a command exits with a non-zero status.
-          # Set -u: Treat unset variables as an error.
-          # Set -x: Print commands and their arguments as they are executed.
-          # Set -o pipefail: The return value of a pipeline is the status of the last command to exit with a non-zero status.
           set -euxo pipefail
-
-          # Install Minikube
+          OS_TYPE=$(uname -s | tr '[:upper:]' '[:lower:]')
+          ARCH_TYPE=$(uname -m)
+          if [[ "${ARCH_TYPE}" == "aarch64" ]]; then
+              ARCH_TYPE="arm64"
+          fi
+          MINIKUBE_BINARY="minikube-${OS_TYPE}-${ARCH_TYPE}"
+          KUBECTL_BINARY="kubectl"
+          echo "Detected OS: ${OS_TYPE}, Architecture: ${ARCH_TYPE}"
+          echo "Attempting to download Minikube as: ${MINIKUBE_BINARY}"
           echo "Downloading Minikube..."
-          curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-darwin-arm64
-          sudo mv minikube-darwin-arm64 /usr/local/bin/minikube
+          curl -LO "https://storage.googleapis.com/minikube/releases/latest/${MINIKUBE_BINARY}"
+          echo "Moving Minikube to /usr/local/bin and making it executable..."
+          sudo mv "${MINIKUBE_BINARY}" /usr/local/bin/minikube
           sudo chmod +x /usr/local/bin/minikube
-
-          # Install kubectl
           echo "Downloading kubectl..."
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/darwin/arm64/kubectl"
-          sudo mv kubectl /usr/local/bin/kubectl
+          KUBECTL_DOWNLOAD_URL="https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/${OS_TYPE}/${ARCH_TYPE}/${KUBECTL_BINARY}"
+          curl -LO "${KUBECTL_DOWNLOAD_URL}"
+          echo "Moving kubectl to /usr/local/bin and making it executable..."
+          sudo mv "${KUBECTL_BINARY}" /usr/local/bin/kubectl
           sudo chmod +x /usr/local/bin/kubectl
-
-          # Verify installations
           echo "Verifying Minikube and kubectl installations..."
           ls -l /usr/local/bin/minikube
           file /usr/local/bin/minikube
           minikube version
-
           ls -l /usr/local/bin/kubectl
           file /usr/local/bin/kubectl
           kubectl version --client
@@ -45,30 +46,44 @@ jobs:
       - name: Setup K8s Environment (Minikube & Deploy Apps)
         run: |
           #!/bin/bash
-          minikube delete || true # Ensure it doesn't fail if no cluster exists
-          minikube start --driver=docker # Specify driver for CI environments
+          set -euxo pipefail
+          minikube delete || true
+          minikube start --driver=docker
           eval $(minikube docker-env)
-          make # Ensure your Makefile is available and configured for CI
-
+          make
           sleep 10
+          NAMESPACE_DATE=$(date +%Y%m%d)
+          NAMESPACE_RAND=$(shuf -i 1000-9999 -n 1)
+          DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}-${NAMESPACE_RAND}"
+          echo "Creating namespace: ${DYNAMIC_NAMESPACE}"
+          kubectl create ns "${DYNAMIC_NAMESPACE}" || true
 
-          kubectl create ns observability || true
-          kubectl create ns kafka || true
-          kubectl create ns datalake || true
+          # Export the DYNAMIC_NAMESPACE so subsequent steps can use it (if needed)
+          echo "DYNAMIC_NAMESPACE=${DYNAMIC_NAMESPACE}" >> $GITHUB_ENV
 
-          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.12.2/cert-manager.yaml
+          # --- IMPORTANT: Substitute the dynamic namespace into your YAML files ---
+          # This command finds all .yaml, .yml, and .json files in ./k8s/test-env/
+          # and replaces the placeholder __DYNAMIC_NAMESPACE__ with the actual value.
+          # It uses a temporary file for sed to work correctly on macOS and Linux.
+          find ./k8s/test-env/ -type f \( -name "*.yaml" -o -name "*.yml" -o -name "*.json" \) -print0 | while IFS= read -r -d $'\0' file; do
+            echo "Substituting namespace in: $file"
+            sed -i.bak "s|__DYNAMIC_NAMESPACE__|${DYNAMIC_NAMESPACE}|g" "$file"
+            rm "${file}.bak" # Clean up the backup file created by sed
+          done
+          # ---------------------------------------------------------------------
 
-          sleep 40 # Consider using kubectl wait for more robustness
-
-          echo "Applying datalake application manifests..."
-          kubectl apply -n datalake -f https://github.com/razvanmarinn/datalake/k8s/plain-yaml/
+          echo "Applying datalake application manifests from local path to namespace: ${DYNAMIC_NAMESPACE}..."
+          # Now apply the modified files. No need to specify -n here as it's in the YAML.
+          # If you have subdirectories and want to apply recursively, add -R here.
+          kubectl apply -f ./k8s/test-env/
 
           echo "Setup complete!"
         env:
           KUBECONFIG: ~/.kube/config
 
-      # - name: Run E2E Tests
-      #   run: |
+      - name: Run E2E Tests
+        run: |
+          echo 'test'
 
       - name: Teardown Minikube Cluster
         if: always()
