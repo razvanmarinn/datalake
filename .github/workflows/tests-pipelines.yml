@@ -68,20 +68,18 @@ jobs:
         env:
           KUBECONFIG: ~/.kube/config
 
-      - name: Set up Port Forwarding for Auth Service
+      - name: Set up Port Forwarding for Services
         run: |
           #!/bin/bash
           set -euxo pipefail
-          # Assuming 'auth-service' is the name of your service exposing port 8082
-          # and it's deployed in the DYNAMIC_NAMESPACE.
-          # This command runs in the background and redirects output to /dev/null
-          kubectl port-forward service/auth-service 8082:8082 -n "${DYNAMIC_NAMESPACE}" > /dev/null 2>&1 &
-          # Store the PID of the background process
-          echo $! > port-forward.pid
-          echo "Port forwarding started. PID: $(cat port-forward.pid)"
 
-          # Give some time for the port-forwarding to establish
-          # You might need a more robust readiness check for production scenarios
+          kubectl port-forward svc/identity-service 8082:8082 -n "${DYNAMIC_NAMESPACE}" > /dev/null 2>&1 &
+          echo $! >> port-forward.pid
+
+          kubectl port-forward svc/api-gateway 8083:80 -n "${DYNAMIC_NAMESPACE}" > /dev/null 2>&1 &
+          echo $! >> port-forward.pid
+
+          echo "Port forwarding started for multiple services."
           sleep 5
 
       - name: Setup Go environment
@@ -103,10 +101,13 @@ jobs:
       - name: Teardown Minikube Cluster
         if: always()
         run: |
-          # Kill the port-forward process if its PID file exists
+          # Kill all port-forward processes whose PIDs are stored in the file
           if [ -f port-forward.pid ]; then
-            echo "Killing port-forward process with PID $(cat port-forward.pid)"
-            kill $(cat port-forward.pid) || true
+            echo "Killing port-forward processes..."
+            while read PID; do
+              echo "Killing PID: $PID"
+              kill "$PID" || true # Use || true to prevent script from failing if PID is already gone
+            done < port-forward.pid
             rm port-forward.pid
           fi
           minikube delete
