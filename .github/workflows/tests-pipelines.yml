@@ -1,4 +1,4 @@
-name: K8s E2E Test Pipeline
+name: K8s Tests Pipeline
 
 on:
   push:
@@ -53,37 +53,61 @@ jobs:
           make
           sleep 10
           NAMESPACE_DATE=$(date +%Y%m%d)
-          DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}"
+          NAMESPACE_RAND=$(head /dev/urandom | tr -dc 0-9 | head -c 4)
+          DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}-${NAMESPACE_RAND}"
           echo "Creating namespace: ${DYNAMIC_NAMESPACE}"
           kubectl create ns "${DYNAMIC_NAMESPACE}" || true
-
-          # Export the DYNAMIC_NAMESPACE so subsequent steps can use it (if needed)
           echo "DYNAMIC_NAMESPACE=${DYNAMIC_NAMESPACE}" >> $GITHUB_ENV
-
-          # --- IMPORTANT: Substitute the dynamic namespace into your YAML files ---
-          # This command finds all .yaml, .yml, and .json files in ./k8s/test-env/
-          # and replaces the placeholder __DYNAMIC_NAMESPACE__ with the actual value.
-          # It uses a temporary file for sed to work correctly on macOS and Linux.
           find ./k8s/test-env/ -type f \( -name "*.yaml" -o -name "*.yml" -o -name "*.json" \) -print0 | while IFS= read -r -d $'\0' file; do
             echo "Substituting namespace in: $file"
             sed -i.bak "s|__DYNAMIC_NAMESPACE__|${DYNAMIC_NAMESPACE}|g" "$file"
-            rm "${file}.bak" # Clean up the backup file created by sed
+            rm "${file}.bak"
           done
-          # ---------------------------------------------------------------------
-
           echo "Applying datalake application manifests from local path to namespace: ${DYNAMIC_NAMESPACE}..."
-          # Now apply the modified files. No need to specify -n here as it's in the YAML.
-          # If you have subdirectories and want to apply recursively, add -R here.
           kubectl apply -f ./k8s/test-env/
-
           echo "Setup complete!"
         env:
           KUBECONFIG: ~/.kube/config
 
-      - name: Run E2E Tests
+      - name: Set up Port Forwarding for Auth Service
         run: |
-          echo 'test'
+          #!/bin/bash
+          set -euxo pipefail
+          # Assuming 'auth-service' is the name of your service exposing port 8082
+          # and it's deployed in the DYNAMIC_NAMESPACE.
+          # This command runs in the background and redirects output to /dev/null
+          kubectl port-forward service/auth-service 8082:8082 -n "${DYNAMIC_NAMESPACE}" > /dev/null 2>&1 &
+          # Store the PID of the background process
+          echo $! > port-forward.pid
+          echo "Port forwarding started. PID: $(cat port-forward.pid)"
+
+          # Give some time for the port-forwarding to establish
+          # You might need a more robust readiness check for production scenarios
+          sleep 5
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run Go Integration Tests
+        run: |
+          #!/bin/bash
+          set -euxo pipefail
+          export KUBECONFIG=~/.kube/config
+          echo "Running Go integration tests..."
+          cd test/integration
+          go test -v ./...
+        env:
+          DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
 
       - name: Teardown Minikube Cluster
         if: always()
-        run: minikube delete
+        run: |
+          # Kill the port-forward process if its PID file exists
+          if [ -f port-forward.pid ]; then
+            echo "Killing port-forward process with PID $(cat port-forward.pid)"
+            kill $(cat port-forward.pid) || true
+            rm port-forward.pid
+          fi
+          minikube delete
