@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  e2e-test:
+  run-test:
     runs-on: self-hosted
     steps:
       - name: Checkout code
@@ -53,8 +53,7 @@ jobs:
           make
           sleep 10
           NAMESPACE_DATE=$(date +%Y%m%d)
-          NAMESPACE_RAND=$(head /dev/urandom | tr -dc 0-9 | head -c 4)
-          DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}-${NAMESPACE_RAND}"
+          DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}"
           echo "Creating namespace: ${DYNAMIC_NAMESPACE}"
           kubectl create ns "${DYNAMIC_NAMESPACE}" || true
           echo "DYNAMIC_NAMESPACE=${DYNAMIC_NAMESPACE}" >> $GITHUB_ENV
