@@ -13,64 +13,34 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Minikube and kubectl
+      - name: Setup Kind Cluster
+        uses: engineerd/setup-kind@v0.5.0
+        with:
+          wait: 300s
+          version: v0.20.0
+          image: kindest/node:v1.27.3
+
+      - name: Verify Kind Installation
         run: |
-          set -euxo pipefail
-          OS_TYPE=$(uname -s | tr '[:upper:]' '[:lower:]')
-          ARCH_TYPE=$(uname -m)
-          if [[ "${ARCH_TYPE}" == "aarch64" ]]; then
-            ARCH_TYPE="arm64"
-          fi
-
-          if command -v minikube &> /dev/null && command -v kubectl &> /dev/null; then
-              echo "[INFO] Minikube and kubectl are already installed."
-              minikube version
-              kubectl version --client
-              exit 0
-          fi
-
-          echo "[INFO] Downloading Minikube and kubectl..."
-          MINIKUBE_BINARY="minikube-${OS_TYPE}-${ARCH_TYPE}"
-          curl -LO "https://storage.googleapis.com/minikube/releases/latest/${MINIKUBE_BINARY}"
-          sudo mv "${MINIKUBE_BINARY}" /usr/local/bin/minikube
-          sudo chmod +x /usr/local/bin/minikube
-
-          KUBECTL_URL="https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/${OS_TYPE}/${ARCH_TYPE}/kubectl"
-          curl -LO "${KUBECTL_URL}"
-          sudo mv "kubectl" /usr/local/bin/kubectl
-          sudo chmod +x /usr/local/bin/kubectl
-
-          echo "[INFO] Installation complete."
-          minikube version
-          kubectl version --client
-
-      - name: Setup K8s Environment (Minikube & Deploy Apps)
-        run: |
-          set -euxo pipefail
-
-          echo "[INFO] Cleaning up any previous Minikube instance..."
-          minikube delete || true
-
-          echo "[INFO] Starting Minikube..."
-          minikube start --driver=docker
-
-          # Wait for Minikube to be ready
-          echo "[INFO] Waiting for Minikube to be ready..."
-          minikube status
-
-          # Set up kubectl context explicitly
-          echo "[INFO] Setting up kubectl context..."
-          kubectl config use-context minikube
-          kubectl cluster-info
-
-          # Verify connection
-          echo "[INFO] Verifying kubectl connection..."
+          echo "[INFO] Verifying Kind cluster..."
+          kubectl cluster-info --context kind-kind
           kubectl get nodes
+          kubectl config current-context
 
-          eval $(minikube docker-env)
+      - name: Setup K8s Environment (Load Images & Deploy Apps)
+        run: |
+          set -euxo pipefail
 
           echo "[INFO] Building Docker images locally with make..."
           make
+
+          # Load images into Kind cluster
+          echo "[INFO] Loading Docker images into Kind cluster..."
+          # Get all images from your make build and load them
+          # Adjust these image names based on your actual images
+          kind load docker-image identity-service:latest
+          kind load docker-image api-gateway:latest
+          # Add other images as needed
 
           NAMESPACE_DATE=$(date +%Y%m%d)
           DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}-${RANDOM}"
@@ -104,84 +74,57 @@ jobs:
           kubectl get svc -n "${DYNAMIC_NAMESPACE}"
           kubectl get endpoints -n "${DYNAMIC_NAMESPACE}"
 
-      - name: Expose Services and Get URLs
-        id: expose_services
+      - name: Setup Port Forwarding for Services
+        id: port_forward
         run: |
           set -euxo pipefail
 
-          echo "[INFO] Verifying kubectl context before exposing services..."
-          kubectl config current-context
-          kubectl get nodes
+          echo "[INFO] Setting up port forwarding for services..."
 
-          echo "[INFO] Retrying to get URLs for services via Minikube..."
+          # Function to set up port forwarding
+          setup_port_forward() {
+            local service=$1
+            local port=$2
+            local local_port=$3
 
-          wait_for_service() {
-            local svc=$1
-            local url=""
+            echo "[INFO] Setting up port forward for $service..."
 
-            echo "[INFO] Checking if service $svc exists..."
-            kubectl get svc "$svc" -n "${DYNAMIC_NAMESPACE}" || {
-              echo "[ERROR] Service $svc does not exist"
-              kubectl get svc -n "${DYNAMIC_NAMESPACE}"
-              return 1
-            }
+            # Wait for service to be ready
+            kubectl wait --for=condition=ready --timeout=60s pod -l app="$service" -n "${DYNAMIC_NAMESPACE}"
 
-            echo "[INFO] Checking deployment readiness for $svc..."
-            kubectl rollout status deployment/"$svc" -n "${DYNAMIC_NAMESPACE}" --timeout=60s || {
-              echo "[WARN] Deployment $svc may not be ready yet"
-            }
+            # Start port forwarding in background
+            kubectl port-forward svc/"$service" "${local_port}:${port}" -n "${DYNAMIC_NAMESPACE}" &
+            local pf_pid=$!
 
-            echo "[INFO] Checking pods for service $svc..."
-            kubectl get pods -n "${DYNAMIC_NAMESPACE}" -l app="$svc" || true
+            # Wait for port forward to be ready
+            sleep 5
 
-            # Wait for endpoints to be ready
-            echo "[INFO] Waiting for service endpoints to be ready..."
+            # Test connection
             for i in {1..30}; do
-              endpoints=$(kubectl get endpoints "$svc" -n "${DYNAMIC_NAMESPACE}" -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null || true)
-              if [[ -n "$endpoints" ]]; then
-                echo "[INFO] Service $svc has endpoints: $endpoints"
-                break
-              fi
-              echo "[WAIT] Waiting for $svc endpoints... (${i}/30)"
-              sleep 2
-            done
-
-            # Now try to get the URL
-            for i in {1..30}; do
-              url=$(minikube service "$svc" -n "${DYNAMIC_NAMESPACE}" --url 2>/dev/null || true)
-              if [[ -n "$url" ]]; then
-                echo "[INFO] $svc is available at $url"
-                echo "$url"
+              if curl -s "http://localhost:${local_port}/health" > /dev/null 2>&1 || \
+                 curl -s "http://localhost:${local_port}" > /dev/null 2>&1; then
+                echo "[INFO] $service is accessible at http://localhost:${local_port}"
+                echo "http://localhost:${local_port}"
                 return
               fi
-              echo "[WAIT] Waiting for $svc URL to become ready... (${i}/30)"
-
-              # Add debugging information
-              if [[ $i -eq 5 || $i -eq 15 ]]; then
-                echo "[DEBUG] Service status:"
-                kubectl describe svc "$svc" -n "${DYNAMIC_NAMESPACE}"
-                echo "[DEBUG] Endpoints:"
-                kubectl get endpoints "$svc" -n "${DYNAMIC_NAMESPACE}"
-                echo "[DEBUG] Pods:"
-                kubectl get pods -n "${DYNAMIC_NAMESPACE}" -l app="$svc" -o wide
-              fi
-
+              echo "[WAIT] Waiting for $service to be accessible... (${i}/30)"
               sleep 2
             done
 
-            echo "[ERROR] $svc did not become ready in time"
-            kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide || true
-            kubectl get svc -n "${DYNAMIC_NAMESPACE}" || true
-            kubectl describe svc "$svc" -n "${DYNAMIC_NAMESPACE}" || true
-            kubectl get endpoints -n "${DYNAMIC_NAMESPACE}" || true
+            echo "[ERROR] $service did not become accessible in time"
+            kill $pf_pid 2>/dev/null || true
             exit 1
           }
 
-          IDENTITY_URL=$(wait_for_service identity-service)
+          # Set up port forwarding for services
+          # Adjust ports based on your service configurations
+          IDENTITY_URL=$(setup_port_forward identity-service 8080 8081)
           echo "identity_service_url=${IDENTITY_URL}" >> $GITHUB_ENV
 
-          GATEWAY_URL=$(wait_for_service api-gateway)
+          GATEWAY_URL=$(setup_port_forward api-gateway 8080 8082)
           echo "api_gateway_url=${GATEWAY_URL}" >> $GITHUB_ENV
+
+          echo "[INFO] All services are now accessible via port forwarding"
 
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
@@ -211,8 +154,8 @@ jobs:
           kubectl config current-context || echo "No context set"
           kubectl cluster-info || echo "Cluster info failed"
 
-          echo "Minikube status:"
-          minikube status || echo "Minikube status failed"
+          echo "Kind cluster status:"
+          kind get clusters || echo "Kind clusters failed"
 
           echo "Pods in namespace:"
           kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide || true
@@ -243,8 +186,15 @@ jobs:
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
 
-      - name: Teardown Minikube Cluster
+      - name: Cleanup Port Forwarding
         if: always()
         run: |
-          echo "[INFO] Cleaning up Minikube cluster..."
-          minikube delete || true
+          echo "[INFO] Cleaning up port forwarding processes..."
+          # Kill all kubectl port-forward processes
+          pkill -f "kubectl port-forward" || true
+
+      - name: Teardown Kind Cluster
+        if: always()
+        run: |
+          echo "[INFO] Cleaning up Kind cluster..."
+          kind delete cluster || true
