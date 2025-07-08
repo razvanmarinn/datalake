@@ -78,49 +78,28 @@ jobs:
           kubectl wait --for=condition=available --timeout=300s deployment --all -n "${DYNAMIC_NAMESPACE}"
 
           echo "Waiting for all statefulsets to be ready..."
-          # MODIFICATION: Wait for the Kafka statefulset to complete its rollout.
           kubectl rollout status statefulset/kafka -n "${DYNAMIC_NAMESPACE}" --timeout=300s
 
           echo "Setup complete! All pods are ready."
         env:
           KUBECONFIG: ~/.kube/config
 
-      - name: Set up Port Forwarding for Services
+      - name: Expose Services and Get URLs
+        id: expose_services
         run: |
           #!/bin/bash
           set -euxo pipefail
 
-          # This function waits for a port to be open on localhost without using 'timeout'
-          wait_for_port() {
-            local port=$1
-            local service_name=$2
-            echo "Waiting for port ${port} (${service_name}) to be open..."
+          # Get the URL for the identity-service
+          IDENTITY_URL=$(minikube service identity-service -n "${DYNAMIC_NAMESPACE}" --url)
+          echo "identity_service_url=${IDENTITY_URL}" >> $GITHUB_ENV
 
-            for i in $(seq 1 60); do
-              if nc -z localhost "${port}"; then
-                echo "Port ${port} is open."
-                return 0
-              fi
-              echo "Attempt ${i}/60: Port ${port} is not yet open. Waiting 1s..."
-              sleep 1
-            done
+          # Get the URL for the api-gateway
+          GATEWAY_URL=$(minikube service api-gateway -n "${DYNAMIC_NAMESPACE}" --url)
+          echo "api_gateway_url=${GATEWAY_URL}" >> $GITHUB_ENV
 
-            echo "Error: Timed out after 60 seconds waiting for port ${port}."
-            exit 1
-          }
-
-          echo "Setting up port-forwarding..."
-          kubectl port-forward svc/identity-service 8082:8082 -n "${DYNAMIC_NAMESPACE}" > /tmp/identity-pf.log 2>&1 &
-          echo $! > port-forward.pid
-
-          kubectl port-forward svc/api-gateway 8083:80 -n "${DYNAMIC_NAMESPACE}" > /tmp/gateway-pf.log 2>&1 &
-          echo $! >> port-forward.pid
-
-          # MODIFICATION: Use the portable wait function instead of timeout
-          wait_for_port 8082 "identity-service"
-          wait_for_port 8083 "api-gateway"
-
-          echo "Port forwarding appears to be active."
+          echo "Identity Service URL: ${IDENTITY_URL}"
+          echo "API Gateway URL: ${GATEWAY_URL}"
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
           KUBECONFIG: ~/.kube/config
@@ -137,6 +116,9 @@ jobs:
           set -euxo pipefail
           echo "Running Go integration tests..."
           cd test/integration
+          # Pass the service URLs as environment variables to your tests
+          export IDENTITY_SERVICE_URL=${{ env.identity_service_url }}
+          export API_GATEWAY_URL=${{ env.api_gateway_url }}
           go test -v ./...
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
@@ -146,10 +128,6 @@ jobs:
         if: failure()
         run: |
           echo "--- Tests failed. Dumping debug information. ---"
-          echo "--- Identity Service Port-Forward Log ---"
-          cat /tmp/identity-pf.log || echo "Log file not found."
-          echo "--- API Gateway Port-Forward Log ---"
-          cat /tmp/gateway-pf.log || echo "Log file not found."
           echo "--- Kubernetes Pods Status ---"
           kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide
           echo "--- Kubernetes Services Status ---"
@@ -167,9 +145,4 @@ jobs:
       - name: Teardown Minikube Cluster
         if: always()
         run: |
-          if [ -f port-forward.pid ]; then
-            echo "Killing port-forward processes..."
-            xargs kill < port-forward.pid || true
-            rm port-forward.pid
-          fi
           minikube delete
