@@ -1,80 +1,6 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: identity-service
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: identity-service
-  template:
-    metadata:
-      labels:
-        app: identity-service
-    spec:
-      containers:
-        - name: identity-service
-          image: datalake/identity:latest
-          imagePullPolicy: IfNotPresent
-          ports:
-            - containerPort: 8082
-            - containerPort: 50056
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: identity-service
-spec:
-  type: ClusterIP
-  ports:
-    - name: http
-      port: 8082
-      targetPort: 8082
-    - name: grpc
-      port: 50055
-      targetPort: 50056
-  selector:
-    app: identity-service
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: identity-postgres-secret
-type: Opaque
-data:
-  postgres-password: aWRlbnRpdHlwYXNzd29yZA== # base64 for "identitypassword"
-  postgres-user: aWRlbnRpdHl1c2Vy # base64 for "identityuser"
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: identity-postgres-pv
-spec:
-  capacity:
-    storage: 1Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: standard # <-- ADDED THIS LINE
-  hostPath:
-    path: /data/identity-postgres
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: identity-postgres-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
-  storageClassName: standard # <-- ADDED THIS LINE
-  volumeName: identity-postgres-pv
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
   name: identity-postgres
 spec:
   replicas: 1
@@ -102,24 +28,10 @@ spec:
                 secretKeyRef:
                   name: identity-postgres-secret
                   key: postgres-user
-            - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
+            # The PGDATA variable is not strictly necessary when using the default path
           volumeMounts:
-            - name: identity-postgres-storage
+            - name: postgres-storage # Use an emptyDir volume mount
               mountPath: /var/lib/postgresql/data
       volumes:
-        - name: identity-postgres-storage
-          persistentVolumeClaim:
-            claimName: identity-postgres-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: identity-postgres
-spec:
-  type: ClusterIP
-  ports:
-    - port: 5432
-      targetPort: 5432
-  selector:
-    app: identity-postgres
+        - name: postgres-storage
+          emptyDir: {} # Use a temporary emptyDir volume
