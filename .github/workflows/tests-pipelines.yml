@@ -93,6 +93,17 @@ jobs:
           echo "[INFO] Waiting for StatefulSets to be ready (if any)..."
           kubectl rollout status statefulset/kafka -n "${DYNAMIC_NAMESPACE}" --timeout=300s || echo "[WARN] No kafka statefulset found or not needed"
 
+          echo "[INFO] Waiting for all pods to be ready..."
+          kubectl wait --for=condition=ready --timeout=300s pod --all -n "${DYNAMIC_NAMESPACE}"
+
+          echo "[INFO] Checking deployment rollout status..."
+          kubectl rollout status deployment/identity-service -n "${DYNAMIC_NAMESPACE}" --timeout=300s
+          kubectl rollout status deployment/api-gateway -n "${DYNAMIC_NAMESPACE}" --timeout=300s
+
+          echo "[INFO] Verifying services are accessible..."
+          kubectl get svc -n "${DYNAMIC_NAMESPACE}"
+          kubectl get endpoints -n "${DYNAMIC_NAMESPACE}"
+
       - name: Expose Services and Get URLs
         id: expose_services
         run: |
@@ -115,9 +126,27 @@ jobs:
               return 1
             }
 
+            echo "[INFO] Checking deployment readiness for $svc..."
+            kubectl rollout status deployment/"$svc" -n "${DYNAMIC_NAMESPACE}" --timeout=60s || {
+              echo "[WARN] Deployment $svc may not be ready yet"
+            }
+
             echo "[INFO] Checking pods for service $svc..."
             kubectl get pods -n "${DYNAMIC_NAMESPACE}" -l app="$svc" || true
 
+            # Wait for endpoints to be ready
+            echo "[INFO] Waiting for service endpoints to be ready..."
+            for i in {1..30}; do
+              endpoints=$(kubectl get endpoints "$svc" -n "${DYNAMIC_NAMESPACE}" -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null || true)
+              if [[ -n "$endpoints" ]]; then
+                echo "[INFO] Service $svc has endpoints: $endpoints"
+                break
+              fi
+              echo "[WAIT] Waiting for $svc endpoints... (${i}/30)"
+              sleep 2
+            done
+
+            # Now try to get the URL
             for i in {1..30}; do
               url=$(minikube service "$svc" -n "${DYNAMIC_NAMESPACE}" --url 2>/dev/null || true)
               if [[ -n "$url" ]]; then
@@ -125,7 +154,7 @@ jobs:
                 echo "$url"
                 return
               fi
-              echo "[WAIT] Waiting for $svc to become ready... (${i}/30)"
+              echo "[WAIT] Waiting for $svc URL to become ready... (${i}/30)"
 
               # Add debugging information
               if [[ $i -eq 5 || $i -eq 15 ]]; then
@@ -134,7 +163,7 @@ jobs:
                 echo "[DEBUG] Endpoints:"
                 kubectl get endpoints "$svc" -n "${DYNAMIC_NAMESPACE}"
                 echo "[DEBUG] Pods:"
-                kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide
+                kubectl get pods -n "${DYNAMIC_NAMESPACE}" -l app="$svc" -o wide
               fi
 
               sleep 2
