@@ -142,7 +142,7 @@ jobs:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
           KUBECONFIG: ~/.kube/config
 
-      - name: Teardown Minikube Cluster
-        if: always()
-        run: |
-          minikube delete
+      # - name: Teardown Minikube Cluster
+      #   if: always()
+      #   run: |
+      #     minikube delete
