@@ -19,11 +19,7 @@ jobs:
           if ! command -v kind &> /dev/null; then
             OS_TYPE=$(uname -s | tr '[:upper:]' '[:lower:]')
             ARCH_TYPE=$(uname -m)
-            if [[ "${ARCH_TYPE}" == "aarch64" ]]; then
-              ARCH_TYPE="arm64"
-            elif [[ "${ARCH_TYPE}" == "x86_64" ]]; then
-              ARCH_TYPE="amd64"
-            fi
+            if [[ "${ARCH_TYPE}" == "aarch64" ]]; then ARCH_TYPE="arm64"; elif [[ "${ARCH_TYPE}" == "x86_64" ]]; then ARCH_TYPE="amd64"; fi
             KIND_VERSION="v0.20.0"
             curl -Lo ./kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-${OS_TYPE}-${ARCH_TYPE}"
             chmod +x ./kind
@@ -32,11 +28,7 @@ jobs:
           if ! command -v kubectl &> /dev/null; then
             OS_TYPE=$(uname -s | tr '[:upper:]' '[:lower:]')
             ARCH_TYPE=$(uname -m)
-            if [[ "${ARCH_TYPE}" == "aarch64" ]]; then
-              ARCH_TYPE="arm64"
-            elif [[ "${ARCH_TYPE}" == "x86_64" ]]; then
-              ARCH_TYPE="amd64"
-            fi
+            if [[ "${ARCH_TYPE}" == "aarch64" ]]; then ARCH_TYPE="arm64"; elif [[ "${ARCH_TYPE}" == "x86_64" ]]; then ARCH_TYPE="amd64"; fi
             KUBECTL_URL="https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/${OS_TYPE}/${ARCH_TYPE}/kubectl"
             curl -LO "${KUBECTL_URL}"
             chmod +x kubectl
@@ -80,18 +72,32 @@ jobs:
           DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}-${RANDOM}"
           kubectl create ns "${DYNAMIC_NAMESPACE}"
           echo "DYNAMIC_NAMESPACE=${DYNAMIC_NAMESPACE}" >> $GITHUB_ENV
-          find ./k8s/test-env/ -type f \( -name "*.yaml" -o -name "*.yml" \) -exec sed -i '' "s/__DYNAMIC_NAMESPACE__/${DYNAMIC_NAMESPACE}/g" {} \;
+
+          find ./k8s/test-env/ -type f \( -name "*.yaml" -o -name "*.yml" \) \
+            -exec sed -i "s/__DYNAMIC_NAMESPACE__/${DYNAMIC_NAMESPACE}/g" {} +
+
           kubectl apply -f ./k8s/test-env/
 
-      - name: Run Go Integration Tests
-        id: go-tests
+      - name: Run Go Integration Tests in Pod
         run: |
           set -euxo pipefail
-          cd test/integration
-          go test -v ./...
+
+          sleep 60
+          kubectl get pods -n "$DYNAMIC_NAMESPACE"
+
+
+          POD=$(kubectl get pod -n "$DYNAMIC_NAMESPACE" -l app=integration-tests -o jsonpath='{.items[0].metadata.name}' || echo "")
+
+          if [ -z "$POD" ]; then
+            echo "No integration-tests pod found!"
+            kubectl get pods -n "$DYNAMIC_NAMESPACE"
+            exit 1
+          fi
+
+          echo "Pod logs:"
+          kubectl logs "$POD" -n "$DYNAMIC_NAMESPACE" || echo "No logs available"
+
         env:
-          IDENTITY_SERVICE_URL: ${{ env.identity_service_url }}
-          API_GATEWAY_URL: ${{ env.api_gateway_url }}
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
 
       - name: Teardown Kind Cluster

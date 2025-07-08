@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: integration-tests
+  namespace: __DYNAMIC_NAMESPACE__
   labels:
     app: integration-tests
 spec:
@@ -17,3 +18,4 @@ spec:
       containers:
         - name: integration-tests
           image: datalake/integration_tests:latest
+          imagePullPolicy: IfNotPresent
