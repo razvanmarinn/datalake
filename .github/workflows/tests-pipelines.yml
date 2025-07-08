@@ -74,44 +74,14 @@ jobs:
           kind load docker-image datalake/ingestion:latest
           kind load docker-image datalake/worker:latest
           kind load docker-image datalake/master:latest
+          kind load docker-image datalake/integration_tests:latest
+
           NAMESPACE_DATE=$(date +%Y%m%d)
           DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}-${RANDOM}"
           kubectl create ns "${DYNAMIC_NAMESPACE}"
           echo "DYNAMIC_NAMESPACE=${DYNAMIC_NAMESPACE}" >> $GITHUB_ENV
           find ./k8s/test-env/ -type f \( -name "*.yaml" -o -name "*.yml" \) -exec sed -i '' "s/__DYNAMIC_NAMESPACE__/${DYNAMIC_NAMESPACE}/g" {} \;
           kubectl apply -f ./k8s/test-env/
-
-      - name: Setup Port Forwarding for Services
-        id: port_forward
-        run: |
-          set -euxo pipefail
-          setup_nodeport_service() {
-            local service=$1
-            local port=$2
-            local nodeport=$3
-            kubectl wait --for=condition=ready --timeout=60s pod -l app="$service" -n "${DYNAMIC_NAMESPACE}"
-            kubectl patch svc "$service" -n "${DYNAMIC_NAMESPACE}" -p '{"spec":{"type":"NodePort","ports":[{"port":'${port}',"targetPort":'${port}',"nodePort":'${nodeport}'}]}}'
-            local url="http://localhost:${nodeport}"
-            for i in {1..30}; do
-              if curl -s "${url}/health" > /dev/null 2>&1 || curl -s "${url}" > /dev/null 2>&1; then
-                echo "${url}"
-                return
-              fi
-              sleep 2
-            done
-            exit 1
-          }
-          IDENTITY_URL=$(setup_nodeport_service identity 8080 30081)
-          echo "identity_service_url=${IDENTITY_URL}" >> $GITHUB_ENV
-          GATEWAY_URL=$(setup_nodeport_service api-gateway 8080 30082)
-          echo "api_gateway_url=${GATEWAY_URL}" >> $GITHUB_ENV
-        env:
-          DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
-
-      - name: Setup Go environment
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
 
       - name: Run Go Integration Tests
         id: go-tests
@@ -122,23 +92,6 @@ jobs:
         env:
           IDENTITY_SERVICE_URL: ${{ env.identity_service_url }}
           API_GATEWAY_URL: ${{ env.api_gateway_url }}
-          DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
-
-      - name: Dump Logs on Failure
-        if: failure()
-        run: |
-          kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide || true
-          kubectl describe pods -n "${DYNAMIC_NAMESPACE}" || true
-          kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o name | while read pod; do
-            echo "=== Logs for $pod ==="
-            kubectl logs "$pod" -n "${DYNAMIC_NAMESPACE}" --tail=50 || true
-          done
-          kubectl get svc -n "${DYNAMIC_NAMESPACE}" || true
-          kubectl get endpoints -n "${DYNAMIC_NAMESPACE}" || true
-          kubectl get deployment -n "${DYNAMIC_NAMESPACE}" || true
-          kubectl get statefulset -n "${DYNAMIC_NAMESPACE}" || true
-          kubectl get events -n "${DYNAMIC_NAMESPACE}" --sort-by='.lastTimestamp' || true
-        env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
 
       - name: Teardown Kind Cluster

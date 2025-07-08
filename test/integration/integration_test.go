@@ -10,15 +10,15 @@ import (
 )
 
 var (
-	registerProjectURL = "http://localhost:8082/project/register"
-	loginURL           = "http://localhost:8082/login"
+	registerProjectURL = "http://identity-service:8082/project/register"
+	loginURL           = "http://identity-service:8082/login"
 	username           = "test1"
 	email              = "test@asd.com"
 	password           = "test"
 )
 
 func registerUser(t *testing.T, username, email, password string) string {
-	registerURL := "http://localhost:8082/register"
+	registerURL := "http://identity-service:8082/register"
 	registerPayload := map[string]string{
 		"username": username,
 		"email":    email,

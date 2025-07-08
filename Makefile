@@ -25,12 +25,11 @@ SERVICES = \
     services/schema-registry \
     services/streaming_ingestion
 
-
 export DOCKER_BUILDKIT=1
 
 .PHONY: all docker-env build-docker build-push clean update-all
 
-all: docker-env build-dfs build-services
+all: docker-env build-dfs build-services build-tests
 
 docker-env:
 	@echo "🟢 Using Minikube Docker daemon"
@@ -48,6 +47,9 @@ build-services:
 		echo "🔧 Building $$name..."; \
 		docker build -t datalake/$$name:latest $$svc; \
 	done
+
+build-tests:
+	docker build -t datalake/integration_tests test/integration
 
 build-push: all
 	@for svc in $(SERVICES); do \
