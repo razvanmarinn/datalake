@@ -16,13 +16,7 @@ jobs:
       - name: Install Kind and kubectl
         run: |
           set -euxo pipefail
-
-          # Check if Kind is already installed
-          if command -v kind &> /dev/null; then
-            echo "[INFO] Kind is already installed."
-            kind version
-          else
-            echo "[INFO] Installing Kind..."
+          if ! command -v kind &> /dev/null; then
             OS_TYPE=$(uname -s | tr '[:upper:]' '[:lower:]')
             ARCH_TYPE=$(uname -m)
             if [[ "${ARCH_TYPE}" == "aarch64" ]]; then
@@ -30,22 +24,12 @@ jobs:
             elif [[ "${ARCH_TYPE}" == "x86_64" ]]; then
               ARCH_TYPE="amd64"
             fi
-
             KIND_VERSION="v0.20.0"
             curl -Lo ./kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-${OS_TYPE}-${ARCH_TYPE}"
             chmod +x ./kind
             sudo mv ./kind /usr/local/bin/kind
-
-            echo "[INFO] Kind installation complete."
-            kind version
           fi
-
-          # Check if kubectl is installed
-          if command -v kubectl &> /dev/null; then
-            echo "[INFO] kubectl is already installed."
-            kubectl version --client
-          else
-            echo "[INFO] Installing kubectl..."
+          if ! command -v kubectl &> /dev/null; then
             OS_TYPE=$(uname -s | tr '[:upper:]' '[:lower:]')
             ARCH_TYPE=$(uname -m)
             if [[ "${ARCH_TYPE}" == "aarch64" ]]; then
@@ -53,24 +37,16 @@ jobs:
             elif [[ "${ARCH_TYPE}" == "x86_64" ]]; then
               ARCH_TYPE="amd64"
             fi
-
             KUBECTL_URL="https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/${OS_TYPE}/${ARCH_TYPE}/kubectl"
             curl -LO "${KUBECTL_URL}"
             chmod +x kubectl
             sudo mv kubectl /usr/local/bin/kubectl
-
-            echo "[INFO] kubectl installation complete."
-            kubectl version --client
           fi
 
       - name: Setup Kind Cluster
         run: |
           set -euxo pipefail
-
-          echo "[INFO] Cleaning up any existing Kind cluster..."
           kind delete cluster --name kind || true
-
-          echo "[INFO] Creating Kind cluster..."
           cat <<EOF > kind-config.yaml
           kind: Cluster
           apiVersion: kind.x-k8s.io/v1alpha4
@@ -85,96 +61,50 @@ jobs:
             - containerPort: 30082
               hostPort: 30082
           EOF
-
           kind create cluster --name kind --config kind-config.yaml --wait 300s
-
-          echo "[INFO] Setting kubectl context..."
           kubectl config use-context kind-kind
-
-          echo "[INFO] Verifying cluster..."
-          kubectl cluster-info --context kind-kind
-          kubectl get nodes
-          kubectl config current-context
 
       - name: Setup K8s Environment (Load Images & Deploy Apps)
         run: |
           set -euxo pipefail
-
-          echo "[INFO] Building Docker images locally with make..."
           make
-
-          # Load images into Kind cluster
-          echo "[INFO] Loading Docker images into Kind cluster..."
-          # Load all your datalake images
           kind load docker-image datalake/streaming_ingestion:latest
           kind load docker-image datalake/identity:latest
           kind load docker-image datalake/api_gateway:latest
           kind load docker-image datalake/ingestion:latest
           kind load docker-image datalake/worker:latest
           kind load docker-image datalake/master:latest
-
-          # Verify images are loaded
-          echo "[INFO] Verifying images are loaded in Kind cluster..."
-          docker exec -it kind-control-plane crictl images | grep datalake || echo "[WARN] Some images may not be visible yet"
-
           NAMESPACE_DATE=$(date +%Y%m%d)
           DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}-${RANDOM}"
-          echo "Creating namespace: ${DYNAMIC_NAMESPACE}"
           kubectl create ns "${DYNAMIC_NAMESPACE}"
           echo "DYNAMIC_NAMESPACE=${DYNAMIC_NAMESPACE}" >> $GITHUB_ENV
-
-          echo "[INFO] Replacing __DYNAMIC_NAMESPACE__ placeholders in manifests..."
-          find ./k8s/test-env/ -type f \( -name "*.yaml" -o -name "*.yml" \) -print0 | while IFS= read -r -d
+          find ./k8s/test-env/ -type f \( -name "*.yaml" -o -name "*.yml" \) -exec sed -i "s/__DYNAMIC_NAMESPACE__/${DYNAMIC_NAMESPACE}/g" {} \;
+          kubectl apply -f ./k8s/test-env/
 
       - name: Setup Port Forwarding for Services
         id: port_forward
         run: |
           set -euxo pipefail
-
-          echo "[INFO] Setting up NodePort services for external access..."
-
-          # Function to expose service via NodePort
           setup_nodeport_service() {
             local service=$1
             local port=$2
             local nodeport=$3
-
-            echo "[INFO] Setting up NodePort for $service..."
-
-            # Wait for service to be ready
             kubectl wait --for=condition=ready --timeout=60s pod -l app="$service" -n "${DYNAMIC_NAMESPACE}"
-
-            # Create NodePort service
             kubectl patch svc "$service" -n "${DYNAMIC_NAMESPACE}" -p '{"spec":{"type":"NodePort","ports":[{"port":'${port}',"targetPort":'${port}',"nodePort":'${nodeport}'}]}}'
-
-            # Wait for service to be accessible
             local url="http://localhost:${nodeport}"
             for i in {1..30}; do
-              if curl -s "${url}/health" > /dev/null 2>&1 || \
-                 curl -s "${url}" > /dev/null 2>&1; then
-                echo "[INFO] $service is accessible at ${url}"
+              if curl -s "${url}/health" > /dev/null 2>&1 || curl -s "${url}" > /dev/null 2>&1; then
                 echo "${url}"
                 return
               fi
-              echo "[WAIT] Waiting for $service to be accessible... (${i}/30)"
               sleep 2
             done
-
-            echo "[ERROR] $service did not become accessible in time"
-            kubectl describe svc "$service" -n "${DYNAMIC_NAMESPACE}"
             exit 1
           }
-
-          # Set up NodePort services
-          # Adjust service names and ports based on your actual service configurations
           IDENTITY_URL=$(setup_nodeport_service identity 8080 30081)
           echo "identity_service_url=${IDENTITY_URL}" >> $GITHUB_ENV
-
           GATEWAY_URL=$(setup_nodeport_service api-gateway 8080 30082)
           echo "api_gateway_url=${GATEWAY_URL}" >> $GITHUB_ENV
-
-          echo "[INFO] All services are now accessible via NodePort"
-
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
 
@@ -187,62 +117,31 @@ jobs:
         id: go-tests
         run: |
           set -euxo pipefail
-          echo "[INFO] Running Go integration tests..."
           cd test/integration
-          export IDENTITY_SERVICE_URL=${{ env.identity_service_url }}
-          export API_GATEWAY_URL=${{ env.api_gateway_url }}
           go test -v ./...
         env:
+          IDENTITY_SERVICE_URL: ${{ env.identity_service_url }}
+          API_GATEWAY_URL: ${{ env.api_gateway_url }}
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
 
       - name: Dump Logs on Failure
         if: failure()
         run: |
-          echo "--- Tests failed. Dumping Kubernetes state for debugging. ---"
-          echo "Current kubectl context:"
-          kubectl config current-context || echo "No context set"
-          kubectl cluster-info || echo "Cluster info failed"
-
-          echo "Kind cluster status:"
-          kind get clusters || echo "Kind clusters failed"
-
-          echo "Pods in namespace:"
           kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide || true
-
-          echo "Pod descriptions:"
           kubectl describe pods -n "${DYNAMIC_NAMESPACE}" || true
-
-          echo "Pod logs:"
           kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o name | while read pod; do
             echo "=== Logs for $pod ==="
             kubectl logs "$pod" -n "${DYNAMIC_NAMESPACE}" --tail=50 || true
           done
-
-          echo "Services:"
           kubectl get svc -n "${DYNAMIC_NAMESPACE}" || true
-
-          echo "Endpoints:"
           kubectl get endpoints -n "${DYNAMIC_NAMESPACE}" || true
-
-          echo "Deployments:"
           kubectl get deployment -n "${DYNAMIC_NAMESPACE}" || true
-
-          echo "StatefulSets:"
           kubectl get statefulset -n "${DYNAMIC_NAMESPACE}" || true
-
-          echo "Events:"
           kubectl get events -n "${DYNAMIC_NAMESPACE}" --sort-by='.lastTimestamp' || true
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
 
-      - name: Cleanup NodePort Services
-        if: always()
-        run: |
-          echo "[INFO] Cleaning up NodePort services..."
-          # Services will be cleaned up with namespace deletion
-
       - name: Teardown Kind Cluster
         if: always()
         run: |
-          echo "[INFO] Cleaning up Kind cluster..."
-          kind delete cluster || true
+          kind delete cluster --name kind || true
