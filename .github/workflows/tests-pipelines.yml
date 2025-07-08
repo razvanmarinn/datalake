@@ -53,6 +53,20 @@ jobs:
 
           echo "[INFO] Starting Minikube..."
           minikube start --driver=docker
+
+          # Wait for Minikube to be ready
+          echo "[INFO] Waiting for Minikube to be ready..."
+          minikube status
+
+          # Set up kubectl context explicitly
+          echo "[INFO] Setting up kubectl context..."
+          kubectl config use-context minikube
+          kubectl cluster-info
+
+          # Verify connection
+          echo "[INFO] Verifying kubectl connection..."
+          kubectl get nodes
+
           eval $(minikube docker-env)
 
           echo "[INFO] Building Docker images locally with make..."
@@ -84,11 +98,26 @@ jobs:
         run: |
           set -euxo pipefail
 
+          echo "[INFO] Verifying kubectl context before exposing services..."
+          kubectl config current-context
+          kubectl get nodes
+
           echo "[INFO] Retrying to get URLs for services via Minikube..."
 
           wait_for_service() {
             local svc=$1
             local url=""
+
+            echo "[INFO] Checking if service $svc exists..."
+            kubectl get svc "$svc" -n "${DYNAMIC_NAMESPACE}" || {
+              echo "[ERROR] Service $svc does not exist"
+              kubectl get svc -n "${DYNAMIC_NAMESPACE}"
+              return 1
+            }
+
+            echo "[INFO] Checking pods for service $svc..."
+            kubectl get pods -n "${DYNAMIC_NAMESPACE}" -l app="$svc" || true
+
             for i in {1..30}; do
               url=$(minikube service "$svc" -n "${DYNAMIC_NAMESPACE}" --url 2>/dev/null || true)
               if [[ -n "$url" ]]; then
@@ -97,11 +126,25 @@ jobs:
                 return
               fi
               echo "[WAIT] Waiting for $svc to become ready... (${i}/30)"
+
+              # Add debugging information
+              if [[ $i -eq 5 || $i -eq 15 ]]; then
+                echo "[DEBUG] Service status:"
+                kubectl describe svc "$svc" -n "${DYNAMIC_NAMESPACE}"
+                echo "[DEBUG] Endpoints:"
+                kubectl get endpoints "$svc" -n "${DYNAMIC_NAMESPACE}"
+                echo "[DEBUG] Pods:"
+                kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide
+              fi
+
               sleep 2
             done
+
             echo "[ERROR] $svc did not become ready in time"
             kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide || true
             kubectl get svc -n "${DYNAMIC_NAMESPACE}" || true
+            kubectl describe svc "$svc" -n "${DYNAMIC_NAMESPACE}" || true
+            kubectl get endpoints -n "${DYNAMIC_NAMESPACE}" || true
             exit 1
           }
 
@@ -113,7 +156,6 @@ jobs:
 
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
-          KUBECONFIG: ~/.kube/config
 
       - name: Setup Go environment
         uses: actions/setup-go@v5
@@ -131,21 +173,46 @@ jobs:
           go test -v ./...
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
-          KUBECONFIG: ~/.kube/config
 
       - name: Dump Logs on Failure
         if: failure()
         run: |
           echo "--- Tests failed. Dumping Kubernetes state for debugging. ---"
+          echo "Current kubectl context:"
+          kubectl config current-context || echo "No context set"
+          kubectl cluster-info || echo "Cluster info failed"
+
+          echo "Minikube status:"
+          minikube status || echo "Minikube status failed"
+
+          echo "Pods in namespace:"
           kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide || true
+
+          echo "Pod descriptions:"
           kubectl describe pods -n "${DYNAMIC_NAMESPACE}" || true
+
+          echo "Pod logs:"
+          kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o name | while read pod; do
+            echo "=== Logs for $pod ==="
+            kubectl logs "$pod" -n "${DYNAMIC_NAMESPACE}" --tail=50 || true
+          done
+
+          echo "Services:"
           kubectl get svc -n "${DYNAMIC_NAMESPACE}" || true
+
+          echo "Endpoints:"
           kubectl get endpoints -n "${DYNAMIC_NAMESPACE}" || true
+
+          echo "Deployments:"
           kubectl get deployment -n "${DYNAMIC_NAMESPACE}" || true
+
+          echo "StatefulSets:"
           kubectl get statefulset -n "${DYNAMIC_NAMESPACE}" || true
+
+          echo "Events:"
+          kubectl get events -n "${DYNAMIC_NAMESPACE}" --sort-by='.lastTimestamp' || true
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
-          KUBECONFIG: ~/.kube/config
 
       - name: Teardown Minikube Cluster
         if: always()
