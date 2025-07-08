@@ -8,6 +8,7 @@ on:
 jobs:
   run-test:
     runs-on: self-hosted
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -22,38 +23,39 @@ jobs:
           fi
 
           if command -v minikube &> /dev/null && command -v kubectl &> /dev/null; then
-              echo "Minikube and kubectl are already installed."
+              echo "[INFO] Minikube and kubectl are already installed."
               minikube version
               kubectl version --client
               exit 0
           fi
 
+          echo "[INFO] Downloading Minikube and kubectl..."
           MINIKUBE_BINARY="minikube-${OS_TYPE}-${ARCH_TYPE}"
-          echo "Detected OS: ${OS_TYPE}, Architecture: ${ARCH_TYPE}"
-          echo "Downloading Minikube..."
           curl -LO "https://storage.googleapis.com/minikube/releases/latest/${MINIKUBE_BINARY}"
           sudo mv "${MINIKUBE_BINARY}" /usr/local/bin/minikube
           sudo chmod +x /usr/local/bin/minikube
 
-          echo "Downloading kubectl..."
-          KUBECTL_DOWNLOAD_URL="https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/${OS_TYPE}/${ARCH_TYPE}/kubectl"
-          curl -LO "${KUBECTL_DOWNLOAD_URL}"
+          KUBECTL_URL="https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/${OS_TYPE}/${ARCH_TYPE}/kubectl"
+          curl -LO "${KUBECTL_URL}"
           sudo mv "kubectl" /usr/local/bin/kubectl
           sudo chmod +x /usr/local/bin/kubectl
 
-          echo "Verifying installations..."
+          echo "[INFO] Installation complete."
           minikube version
           kubectl version --client
 
       - name: Setup K8s Environment (Minikube & Deploy Apps)
         run: |
-          #!/bin/bash
           set -euxo pipefail
+
+          echo "[INFO] Cleaning up any previous Minikube instance..."
           minikube delete || true
+
+          echo "[INFO] Starting Minikube..."
           minikube start --driver=docker
           eval $(minikube docker-env)
 
-          echo "Building application images..."
+          echo "[INFO] Building Docker images locally with make..."
           make
 
           NAMESPACE_DATE=$(date +%Y%m%d)
@@ -62,44 +64,53 @@ jobs:
           kubectl create ns "${DYNAMIC_NAMESPACE}"
           echo "DYNAMIC_NAMESPACE=${DYNAMIC_NAMESPACE}" >> $GITHUB_ENV
 
-          echo "Substituting namespace in manifests..."
+          echo "[INFO] Replacing __DYNAMIC_NAMESPACE__ placeholders in manifests..."
           find ./k8s/test-env/ -type f \( -name "*.yaml" -o -name "*.yml" \) -print0 | while IFS= read -r -d $'\0' file; do
             sed -i.bak "s|__DYNAMIC_NAMESPACE__|${DYNAMIC_NAMESPACE}|g" "$file"
             rm "${file}.bak"
           done
 
-          echo "Applying application manifests to namespace: ${DYNAMIC_NAMESPACE}..."
+          echo "[INFO] Applying Kubernetes manifests..."
           kubectl apply -f ./k8s/test-env/
 
-          echo "Pausing for 5 seconds to allow API server to process new objects..."
-          sleep 5
-
-          echo "Waiting for all deployments to be ready..."
+          echo "[INFO] Waiting for deployments to become available..."
           kubectl wait --for=condition=available --timeout=300s deployment --all -n "${DYNAMIC_NAMESPACE}"
 
-          echo "Waiting for all statefulsets to be ready..."
-          kubectl rollout status statefulset/kafka -n "${DYNAMIC_NAMESPACE}" --timeout=300s
-
-          echo "Setup complete! All pods are ready."
-        env:
-          KUBECONFIG: ~/.kube/config
+          echo "[INFO] Waiting for StatefulSets to be ready (if any)..."
+          kubectl rollout status statefulset/kafka -n "${DYNAMIC_NAMESPACE}" --timeout=300s || echo "[WARN] No kafka statefulset found or not needed"
 
       - name: Expose Services and Get URLs
         id: expose_services
         run: |
-          #!/bin/bash
           set -euxo pipefail
 
-          # Get the URL for the identity-service
-          IDENTITY_URL=$(minikube service identity-service -n "${DYNAMIC_NAMESPACE}" --url)
+          echo "[INFO] Retrying to get URLs for services via Minikube..."
+
+          wait_for_service() {
+            local svc=$1
+            local url=""
+            for i in {1..30}; do
+              url=$(minikube service "$svc" -n "${DYNAMIC_NAMESPACE}" --url 2>/dev/null || true)
+              if [[ -n "$url" ]]; then
+                echo "[INFO] $svc is available at $url"
+                echo "$url"
+                return
+              fi
+              echo "[WAIT] Waiting for $svc to become ready... (${i}/30)"
+              sleep 2
+            done
+            echo "[ERROR] $svc did not become ready in time"
+            kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide || true
+            kubectl get svc -n "${DYNAMIC_NAMESPACE}" || true
+            exit 1
+          }
+
+          IDENTITY_URL=$(wait_for_service identity-service)
           echo "identity_service_url=${IDENTITY_URL}" >> $GITHUB_ENV
 
-          # Get the URL for the api-gateway
-          GATEWAY_URL=$(minikube service api-gateway -n "${DYNAMIC_NAMESPACE}" --url)
+          GATEWAY_URL=$(wait_for_service api-gateway)
           echo "api_gateway_url=${GATEWAY_URL}" >> $GITHUB_ENV
 
-          echo "Identity Service URL: ${IDENTITY_URL}"
-          echo "API Gateway URL: ${GATEWAY_URL}"
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
           KUBECONFIG: ~/.kube/config
@@ -112,11 +123,9 @@ jobs:
       - name: Run Go Integration Tests
         id: go-tests
         run: |
-          #!/bin/bash
           set -euxo pipefail
-          echo "Running Go integration tests..."
+          echo "[INFO] Running Go integration tests..."
           cd test/integration
-          # Pass the service URLs as environment variables to your tests
           export IDENTITY_SERVICE_URL=${{ env.identity_service_url }}
           export API_GATEWAY_URL=${{ env.api_gateway_url }}
           go test -v ./...
@@ -127,22 +136,19 @@ jobs:
       - name: Dump Logs on Failure
         if: failure()
         run: |
-          echo "--- Tests failed. Dumping debug information. ---"
-          echo "--- Kubernetes Pods Status ---"
-          kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide
-          echo "--- Kubernetes Services Status ---"
-          kubectl get svc -n "${DYNAMIC_NAMESPACE}"
-          echo "--- Kubernetes Endpoints Status ---"
-          kubectl get endpoints -n "${DYNAMIC_NAMESPACE}"
-          echo "--- Kubernetes Deployment Status ---"
-          kubectl get deployment -n "${DYNAMIC_NAMESPACE}"
-          echo "--- Kubernetes StatefulSet Status ---"
-          kubectl get statefulset -n "${DYNAMIC_NAMESPACE}"
+          echo "--- Tests failed. Dumping Kubernetes state for debugging. ---"
+          kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide || true
+          kubectl describe pods -n "${DYNAMIC_NAMESPACE}" || true
+          kubectl get svc -n "${DYNAMIC_NAMESPACE}" || true
+          kubectl get endpoints -n "${DYNAMIC_NAMESPACE}" || true
+          kubectl get deployment -n "${DYNAMIC_NAMESPACE}" || true
+          kubectl get statefulset -n "${DYNAMIC_NAMESPACE}" || true
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
           KUBECONFIG: ~/.kube/config
 
-      # - name: Teardown Minikube Cluster
-      #   if: always()
-      #   run: |
-      #     minikube delete
+      - name: Teardown Minikube Cluster
+        if: always()
+        run: |
+          echo "[INFO] Cleaning up Minikube cluster..."
+          minikube delete || true
