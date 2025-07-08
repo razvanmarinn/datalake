@@ -25,14 +25,16 @@ kind: Service
 metadata:
   name: identity-service
 spec:
-  type: ClusterIP
+  type: NodePort
   ports:
     - name: http
       port: 8082
       targetPort: 8082
+      nodePort: 30082
     - name: grpc
       port: 50055
       targetPort: 50056
+      nodePort: 30055
   selector:
     app: identity-service
 ---
@@ -42,35 +44,8 @@ metadata:
   name: identity-postgres-secret
 type: Opaque
 data:
-  postgres-password: aWRlbnRpdHlwYXNzd29yZA== # base64 for "identitypassword"
-  postgres-user: aWRlbnRpdHl1c2Vy # base64 for "identityuser"
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: identity-postgres-pv
-spec:
-  capacity:
-    storage: 1Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: standard # <-- ADDED THIS LINE
-  hostPath:
-    path: /data/identity-postgres
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: identity-postgres-pvc
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
-  storageClassName: standard # <-- ADDED THIS LINE
-  volumeName: identity-postgres-pv
+  postgres-password: aWRlbnRpdHlwYXNzd29yZA== # identitypassword
+  postgres-user: aWRlbnRpdHl1c2Vy # identityuser
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -109,8 +84,7 @@ spec:
               mountPath: /var/lib/postgresql/data
       volumes:
         - name: identity-postgres-storage
-          persistentVolumeClaim:
-            claimName: identity-postgres-pvc
+          emptyDir: {}
 ---
 apiVersion: v1
 kind: Service
