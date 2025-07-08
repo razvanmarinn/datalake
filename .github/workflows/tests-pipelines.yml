@@ -13,16 +13,85 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Kind Cluster
-        uses: engineerd/setup-kind@v0.5.0
-        with:
-          wait: 300s
-          version: v0.20.0
-          image: kindest/node:v1.27.3
-
-      - name: Verify Kind Installation
+      - name: Install Kind and kubectl
         run: |
-          echo "[INFO] Verifying Kind cluster..."
+          set -euxo pipefail
+
+          # Check if Kind is already installed
+          if command -v kind &> /dev/null; then
+            echo "[INFO] Kind is already installed."
+            kind version
+          else
+            echo "[INFO] Installing Kind..."
+            OS_TYPE=$(uname -s | tr '[:upper:]' '[:lower:]')
+            ARCH_TYPE=$(uname -m)
+            if [[ "${ARCH_TYPE}" == "aarch64" ]]; then
+              ARCH_TYPE="arm64"
+            elif [[ "${ARCH_TYPE}" == "x86_64" ]]; then
+              ARCH_TYPE="amd64"
+            fi
+
+            KIND_VERSION="v0.20.0"
+            curl -Lo ./kind "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-${OS_TYPE}-${ARCH_TYPE}"
+            chmod +x ./kind
+            sudo mv ./kind /usr/local/bin/kind
+
+            echo "[INFO] Kind installation complete."
+            kind version
+          fi
+
+          # Check if kubectl is installed
+          if command -v kubectl &> /dev/null; then
+            echo "[INFO] kubectl is already installed."
+            kubectl version --client
+          else
+            echo "[INFO] Installing kubectl..."
+            OS_TYPE=$(uname -s | tr '[:upper:]' '[:lower:]')
+            ARCH_TYPE=$(uname -m)
+            if [[ "${ARCH_TYPE}" == "aarch64" ]]; then
+              ARCH_TYPE="arm64"
+            elif [[ "${ARCH_TYPE}" == "x86_64" ]]; then
+              ARCH_TYPE="amd64"
+            fi
+
+            KUBECTL_URL="https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/${OS_TYPE}/${ARCH_TYPE}/kubectl"
+            curl -LO "${KUBECTL_URL}"
+            chmod +x kubectl
+            sudo mv kubectl /usr/local/bin/kubectl
+
+            echo "[INFO] kubectl installation complete."
+            kubectl version --client
+          fi
+
+      - name: Setup Kind Cluster
+        run: |
+          set -euxo pipefail
+
+          echo "[INFO] Cleaning up any existing Kind cluster..."
+          kind delete cluster --name kind || true
+
+          echo "[INFO] Creating Kind cluster..."
+          cat <<EOF > kind-config.yaml
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+          - role: control-plane
+            image: kindest/node:v1.27.3
+            extraPortMappings:
+            - containerPort: 30080
+              hostPort: 30080
+            - containerPort: 30081
+              hostPort: 30081
+            - containerPort: 30082
+              hostPort: 30082
+          EOF
+
+          kind create cluster --name kind --config kind-config.yaml --wait 300s
+
+          echo "[INFO] Setting kubectl context..."
+          kubectl config use-context kind-kind
+
+          echo "[INFO] Verifying cluster..."
           kubectl cluster-info --context kind-kind
           kubectl get nodes
           kubectl config current-context
@@ -79,32 +148,29 @@ jobs:
         run: |
           set -euxo pipefail
 
-          echo "[INFO] Setting up port forwarding for services..."
+          echo "[INFO] Setting up NodePort services for external access..."
 
-          # Function to set up port forwarding
-          setup_port_forward() {
+          # Function to expose service via NodePort
+          setup_nodeport_service() {
             local service=$1
             local port=$2
-            local local_port=$3
+            local nodeport=$3
 
-            echo "[INFO] Setting up port forward for $service..."
+            echo "[INFO] Setting up NodePort for $service..."
 
             # Wait for service to be ready
             kubectl wait --for=condition=ready --timeout=60s pod -l app="$service" -n "${DYNAMIC_NAMESPACE}"
 
-            # Start port forwarding in background
-            kubectl port-forward svc/"$service" "${local_port}:${port}" -n "${DYNAMIC_NAMESPACE}" &
-            local pf_pid=$!
+            # Create NodePort service
+            kubectl patch svc "$service" -n "${DYNAMIC_NAMESPACE}" -p '{"spec":{"type":"NodePort","ports":[{"port":'${port}',"targetPort":'${port}',"nodePort":'${nodeport}'}]}}'
 
-            # Wait for port forward to be ready
-            sleep 5
-
-            # Test connection
+            # Wait for service to be accessible
+            local url="http://localhost:${nodeport}"
             for i in {1..30}; do
-              if curl -s "http://localhost:${local_port}/health" > /dev/null 2>&1 || \
-                 curl -s "http://localhost:${local_port}" > /dev/null 2>&1; then
-                echo "[INFO] $service is accessible at http://localhost:${local_port}"
-                echo "http://localhost:${local_port}"
+              if curl -s "${url}/health" > /dev/null 2>&1 || \
+                 curl -s "${url}" > /dev/null 2>&1; then
+                echo "[INFO] $service is accessible at ${url}"
+                echo "${url}"
                 return
               fi
               echo "[WAIT] Waiting for $service to be accessible... (${i}/30)"
@@ -112,19 +178,19 @@ jobs:
             done
 
             echo "[ERROR] $service did not become accessible in time"
-            kill $pf_pid 2>/dev/null || true
+            kubectl describe svc "$service" -n "${DYNAMIC_NAMESPACE}"
             exit 1
           }
 
-          # Set up port forwarding for services
+          # Set up NodePort services
           # Adjust ports based on your service configurations
-          IDENTITY_URL=$(setup_port_forward identity-service 8080 8081)
+          IDENTITY_URL=$(setup_nodeport_service identity-service 8080 30081)
           echo "identity_service_url=${IDENTITY_URL}" >> $GITHUB_ENV
 
-          GATEWAY_URL=$(setup_port_forward api-gateway 8080 8082)
+          GATEWAY_URL=$(setup_nodeport_service api-gateway 8080 30082)
           echo "api_gateway_url=${GATEWAY_URL}" >> $GITHUB_ENV
 
-          echo "[INFO] All services are now accessible via port forwarding"
+          echo "[INFO] All services are now accessible via NodePort"
 
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
@@ -186,12 +252,11 @@ jobs:
         env:
           DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
 
-      - name: Cleanup Port Forwarding
+      - name: Cleanup NodePort Services
         if: always()
         run: |
-          echo "[INFO] Cleaning up port forwarding processes..."
-          # Kill all kubectl port-forward processes
-          pkill -f "kubectl port-forward" || true
+          echo "[INFO] Cleaning up NodePort services..."
+          # Services will be cleaned up with namespace deletion
 
       - name: Teardown Kind Cluster
         if: always()
