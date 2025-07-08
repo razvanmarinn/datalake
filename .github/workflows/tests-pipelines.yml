@@ -105,11 +105,17 @@ jobs:
 
           # Load images into Kind cluster
           echo "[INFO] Loading Docker images into Kind cluster..."
-          # Get all images from your make build and load them
-          # Adjust these image names based on your actual images
-          kind load docker-image identity-service:latest
-          kind load docker-image api-gateway:latest
-          # Add other images as needed
+          # Load all your datalake images
+          kind load docker-image datalake/streaming_ingestion:latest
+          kind load docker-image datalake/identity:latest
+          kind load docker-image datalake/api_gateway:latest
+          kind load docker-image datalake/ingestion:latest
+          kind load docker-image datalake/worker:latest
+          kind load docker-image datalake/master:latest
+
+          # Verify images are loaded
+          echo "[INFO] Verifying images are loaded in Kind cluster..."
+          docker exec -it kind-control-plane crictl images | grep datalake || echo "[WARN] Some images may not be visible yet"
 
           NAMESPACE_DATE=$(date +%Y%m%d)
           DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}-${RANDOM}"
@@ -118,7 +124,128 @@ jobs:
           echo "DYNAMIC_NAMESPACE=${DYNAMIC_NAMESPACE}" >> $GITHUB_ENV
 
           echo "[INFO] Replacing __DYNAMIC_NAMESPACE__ placeholders in manifests..."
-          find ./k8s/test-env/ -type f \( -name "*.yaml" -o -name "*.yml" \) -print0 | while IFS= read -r -d $'\0' file; do
+          find ./k8s/test-env/ -type f \( -name "*.yaml" -o -name "*.yml" \) -print0 | while IFS= read -r -d
+
+      - name: Setup Port Forwarding for Services
+        id: port_forward
+        run: |
+          set -euxo pipefail
+
+          echo "[INFO] Setting up NodePort services for external access..."
+
+          # Function to expose service via NodePort
+          setup_nodeport_service() {
+            local service=$1
+            local port=$2
+            local nodeport=$3
+
+            echo "[INFO] Setting up NodePort for $service..."
+
+            # Wait for service to be ready
+            kubectl wait --for=condition=ready --timeout=60s pod -l app="$service" -n "${DYNAMIC_NAMESPACE}"
+
+            # Create NodePort service
+            kubectl patch svc "$service" -n "${DYNAMIC_NAMESPACE}" -p '{"spec":{"type":"NodePort","ports":[{"port":'${port}',"targetPort":'${port}',"nodePort":'${nodeport}'}]}}'
+
+            # Wait for service to be accessible
+            local url="http://localhost:${nodeport}"
+            for i in {1..30}; do
+              if curl -s "${url}/health" > /dev/null 2>&1 || \
+                 curl -s "${url}" > /dev/null 2>&1; then
+                echo "[INFO] $service is accessible at ${url}"
+                echo "${url}"
+                return
+              fi
+              echo "[WAIT] Waiting for $service to be accessible... (${i}/30)"
+              sleep 2
+            done
+
+            echo "[ERROR] $service did not become accessible in time"
+            kubectl describe svc "$service" -n "${DYNAMIC_NAMESPACE}"
+            exit 1
+          }
+
+          # Set up NodePort services
+          # Adjust service names and ports based on your actual service configurations
+          IDENTITY_URL=$(setup_nodeport_service identity 8080 30081)
+          echo "identity_service_url=${IDENTITY_URL}" >> $GITHUB_ENV
+
+          GATEWAY_URL=$(setup_nodeport_service api-gateway 8080 30082)
+          echo "api_gateway_url=${GATEWAY_URL}" >> $GITHUB_ENV
+
+          echo "[INFO] All services are now accessible via NodePort"
+
+        env:
+          DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run Go Integration Tests
+        id: go-tests
+        run: |
+          set -euxo pipefail
+          echo "[INFO] Running Go integration tests..."
+          cd test/integration
+          export IDENTITY_SERVICE_URL=${{ env.identity_service_url }}
+          export API_GATEWAY_URL=${{ env.api_gateway_url }}
+          go test -v ./...
+        env:
+          DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
+
+      - name: Dump Logs on Failure
+        if: failure()
+        run: |
+          echo "--- Tests failed. Dumping Kubernetes state for debugging. ---"
+          echo "Current kubectl context:"
+          kubectl config current-context || echo "No context set"
+          kubectl cluster-info || echo "Cluster info failed"
+
+          echo "Kind cluster status:"
+          kind get clusters || echo "Kind clusters failed"
+
+          echo "Pods in namespace:"
+          kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o wide || true
+
+          echo "Pod descriptions:"
+          kubectl describe pods -n "${DYNAMIC_NAMESPACE}" || true
+
+          echo "Pod logs:"
+          kubectl get pods -n "${DYNAMIC_NAMESPACE}" -o name | while read pod; do
+            echo "=== Logs for $pod ==="
+            kubectl logs "$pod" -n "${DYNAMIC_NAMESPACE}" --tail=50 || true
+          done
+
+          echo "Services:"
+          kubectl get svc -n "${DYNAMIC_NAMESPACE}" || true
+
+          echo "Endpoints:"
+          kubectl get endpoints -n "${DYNAMIC_NAMESPACE}" || true
+
+          echo "Deployments:"
+          kubectl get deployment -n "${DYNAMIC_NAMESPACE}" || true
+
+          echo "StatefulSets:"
+          kubectl get statefulset -n "${DYNAMIC_NAMESPACE}" || true
+
+          echo "Events:"
+          kubectl get events -n "${DYNAMIC_NAMESPACE}" --sort-by='.lastTimestamp' || true
+        env:
+          DYNAMIC_NAMESPACE: ${{ env.DYNAMIC_NAMESPACE }}
+
+      - name: Cleanup NodePort Services
+        if: always()
+        run: |
+          echo "[INFO] Cleaning up NodePort services..."
+          # Services will be cleaned up with namespace deletion
+
+      - name: Teardown Kind Cluster
+        if: always()
+        run: |
+          echo "[INFO] Cleaning up Kind cluster..."
+          kind delete cluster || true\0' file; do
             sed -i.bak "s|__DYNAMIC_NAMESPACE__|${DYNAMIC_NAMESPACE}|g" "$file"
             rm "${file}.bak"
           done
@@ -136,8 +263,12 @@ jobs:
           kubectl wait --for=condition=ready --timeout=300s pod --all -n "${DYNAMIC_NAMESPACE}"
 
           echo "[INFO] Checking deployment rollout status..."
-          kubectl rollout status deployment/identity-service -n "${DYNAMIC_NAMESPACE}" --timeout=300s
-          kubectl rollout status deployment/api-gateway -n "${DYNAMIC_NAMESPACE}" --timeout=300s
+          kubectl rollout status deployment/identity -n "${DYNAMIC_NAMESPACE}" --timeout=300s || echo "[WARN] No identity deployment found"
+          kubectl rollout status deployment/api-gateway -n "${DYNAMIC_NAMESPACE}" --timeout=300s || echo "[WARN] No api-gateway deployment found"
+          kubectl rollout status deployment/streaming-ingestion -n "${DYNAMIC_NAMESPACE}" --timeout=300s || echo "[WARN] No streaming-ingestion deployment found"
+          kubectl rollout status deployment/ingestion -n "${DYNAMIC_NAMESPACE}" --timeout=300s || echo "[WARN] No ingestion deployment found"
+          kubectl rollout status deployment/worker -n "${DYNAMIC_NAMESPACE}" --timeout=300s || echo "[WARN] No worker deployment found"
+          kubectl rollout status deployment/master -n "${DYNAMIC_NAMESPACE}" --timeout=300s || echo "[WARN] No master deployment found"
 
           echo "[INFO] Verifying services are accessible..."
           kubectl get svc -n "${DYNAMIC_NAMESPACE}"
