@@ -78,7 +78,7 @@ jobs:
           DYNAMIC_NAMESPACE="test-env-${NAMESPACE_DATE}-${RANDOM}"
           kubectl create ns "${DYNAMIC_NAMESPACE}"
           echo "DYNAMIC_NAMESPACE=${DYNAMIC_NAMESPACE}" >> $GITHUB_ENV
-          find ./k8s/test-env/ -type f \( -name "*.yaml" -o -name "*.yml" \) -exec sed -i "s/__DYNAMIC_NAMESPACE__/${DYNAMIC_NAMESPACE}/g" {} \;
+          find ./k8s/test-env/ -type f \( -name "*.yaml" -o -name "*.yml" \) -exec sed -i '' "s/__DYNAMIC_NAMESPACE__/${DYNAMIC_NAMESPACE}/g" {} \;
           kubectl apply -f ./k8s/test-env/
 
       - name: Setup Port Forwarding for Services
