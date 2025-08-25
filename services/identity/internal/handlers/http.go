@@ -76,7 +76,7 @@ func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter) *gin.Engine {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token"})
 			return
 		}
-		c.JSON(http.StatusOK, gin.H{"token": tkn})
+		c.JSON(http.StatusOK, gin.H{"token": tkn, "user-id": user.ID})
 	})
 
 	r.POST("/project/register/", func(c *gin.Context) {

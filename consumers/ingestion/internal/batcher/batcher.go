@@ -158,6 +158,8 @@ func (mb *MessageBatch) GetMessagesAsAvroBytes(schema *Schema) ([]byte, error) {
 		return nil, fmt.Errorf("OCF writer creation failed: %v", err)
 	}
 
+	fmt.Printf("Avro schema: %s\n", schemaToAvroSchema(schema))
+
 	// 2. Convert ALL messages first
 	var records []interface{}
 	for _, msg := range mb.Messages {
@@ -168,11 +170,14 @@ func (mb *MessageBatch) GetMessagesAsAvroBytes(schema *Schema) ([]byte, error) {
 		records = append(records, record)
 	}
 
+	fmt.Printf("Converted %d records to Avro\n", len(records))
+
 	// 3. Write in ONE atomic operation
 	if err := ocfw.Append(records); err != nil {
 		return nil, fmt.Errorf("avro write failed: %v", err)
 	}
 
+	fmt.Printf("Written %d records to Avro container\n", len(records))
 	// Verify minimum valid file size
 	if buf.Len() < 64 {
 		return nil, fmt.Errorf("invalid avro output (size %d < 64 bytes)", buf.Len())

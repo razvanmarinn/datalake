@@ -5,7 +5,7 @@ go 1.23.4
 require (
 	github.com/google/uuid v1.6.0
 	github.com/linkedin/goavro/v2 v2.13.1
-	github.com/razvanmarinn/datalake v0.0.0-20250326222313-2998f57f2ff7
+	github.com/razvanmarinn/datalake v0.0.0-20250708233314-4cb9ce971610
 	github.com/segmentio/kafka-go v0.4.47
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.37.0

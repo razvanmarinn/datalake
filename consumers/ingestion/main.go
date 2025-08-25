@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"log/slog"
 	"net/http"
 	"os"
@@ -164,13 +163,12 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Handle graceful shutdown
 	shutdownChan := make(chan os.Signal, 1)
 	signal.Notify(shutdownChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sig := <-shutdownChan
 		logger.Info("received shutdown signal", "signal", sig)
-		cancel() // Signal all operations to cancel
+		cancel()
 		app.Shutdown()
 	}()
 
@@ -182,6 +180,8 @@ func NewApp(cfg Config, logger *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize tracer: %w", err)
 	}
+
+	tracer = otel.Tracer(ServiceName)
 
 	return &App{
 		config:         cfg,
@@ -207,11 +207,8 @@ func NewApp(cfg Config, logger *slog.Logger) (*App, error) {
 
 func (app *App) Run(ctx context.Context) {
 	app.logger.Info("starting consumer", "topic", app.config.KafkaTopic, "groupID", app.config.KafkaGroupID)
-
-	// Ticker for periodic batch flushing
 	go app.runTickerFlusher(ctx)
 
-	// Main consumption loop
 	for {
 		select {
 		case <-ctx.Done():
@@ -269,13 +266,16 @@ func (app *App) runTickerFlusher(ctx context.Context) {
 }
 
 func (app *App) processMessage(ctx context.Context, m kafka.Message) {
+	// Extract parent context from Kafka headers
+	carrier := kafkaHeaderCarrier{headers: &m.Headers}
+	ctx = propagator.Extract(ctx, &carrier)
+
 	ctx, span := tracer.Start(ctx, "ProcessKafkaMessage", trace.WithSpanKind(trace.SpanKindConsumer))
 	defer span.End()
 
 	logger := app.logger.With("offset", m.Offset, "key", string(m.Key))
-	logger.Debug("received message")
+	logger.Info("received message %d bytes", "size", len(m.Value))
 
-	// Fetch schema (with caching)
 	msgSchema, err := app.fetchSchemaWithCache(ctx, string(m.Key))
 	if err != nil {
 		logger.Error("failed to fetch schema, sending to DLT", "error", err)
@@ -283,14 +283,12 @@ func (app *App) processMessage(ctx context.Context, m kafka.Message) {
 		return
 	}
 
-	// Validate message against schema
 	if _, err := batcher.UnmarshalMessage(msgSchema, m.Value); err != nil {
 		logger.Error("failed to unmarshal message, sending to DLT", "error", err)
 		app.sendToDLT(ctx, m)
 		return
 	}
 
-	// Add to batch and flush if needed
 	app.batcherLock.Lock()
 	app.batcher.AddMessage(m.Key, m.Value)
 	size := len(app.batcher.Messages)
@@ -303,27 +301,23 @@ func (app *App) processMessage(ctx context.Context, m kafka.Message) {
 	}
 }
 
-func (app *App) flushBatch(ctx context.Context, trigger string) {
+func (app *App) flushBatch(parentCtx context.Context, trigger string) {
 	app.batcherLock.Lock()
-	defer app.batcherLock.Unlock()
-
 	if len(app.batcher.Messages) == 0 {
+		app.batcherLock.Unlock()
 		return
 	}
 
-	app.logger.Info("triggering batch flush", "trigger", trigger, "message_count", len(app.batcher.Messages))
-
-	// Create a new context for this background task to avoid cancellation from a single message's context
-	batchCtx, span := tracer.Start(context.Background(), "ProcessBatch")
-	defer span.End()
-
-	// Create a copy of the batch to process, so we can clear the original batcher
 	batchToProcess := app.batcher.Copy()
 	app.batcher.Clean()
+	app.batcherLock.Unlock()
 
-	if err := app.registerFileMetadata(batchCtx, batchToProcess); err != nil {
-		// Implement retry logic or a more robust failure strategy here.
-		// For now, we just log the error. Losing the batch.
+	ctx, span := tracer.Start(parentCtx, "ProcessBatch")
+	defer span.End()
+
+	app.logger.Info("triggering batch flush", "trigger", trigger, "message_count", len(batchToProcess.Messages))
+
+	if err := app.registerFileMetadata(ctx, batchToProcess); err != nil {
 		app.logger.Error("failed to process batch", "error", err, "batch_uuid", batchToProcess.UUID)
 	}
 }
@@ -395,7 +389,7 @@ func (app *App) fetchSchemaWithCache(ctx context.Context, messageKey string) (*b
 	ctx, span := tracer.Start(ctx, "FetchSchemaFromRegistry")
 	defer span.End()
 
-	url := fmt.Sprintf("http://%s/%s/schema/%s", app.config.SchemaRegistryHost, app.config.SchemaProjectName, messageKey)
+	url := fmt.Sprintf("http://schema-registry.datalake:8081/%s/schema/%s", app.config.SchemaProjectName, messageKey)
 	app.logger.Info("fetching schema from registry", "url", url)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -452,7 +446,7 @@ func loadConfig() (Config, error) {
 		KafkaTopic:         kafkaTopic,
 		KafkaGroupID:       groupID,
 		KafkaDLTTopic:      kafkaTopic + "-dlt",
-		SchemaRegistryHost: getEnv("SCHEMA_REGISTRY_HOST", "schema-registry:8081"),
+		SchemaRegistryHost: getEnv("SCHEMA_REGISTRY_HOST", "schema-registry.datalake:8081"),
 		SchemaProjectName:  getEnv("SCHEMA_PROJECT_NAME", "razvan"),
 		MasterAddress:      getEnv("MASTER_ADDRESS", "master:50055"),
 		OtelCollectorAddr:  getEnv("OTEL_COLLECTOR_ADDR", "otel-collector.observability.svc.cluster.local:4317"),
@@ -497,7 +491,8 @@ func createFileRegistrationRequest(msgbatch *batcher.MessageBatch, data []byte) 
 
 	return &pb.ClientFileRequestToMaster{
 		FileName:   fileName,
-		Hash:       int32(fnv32a(fileName)),
+		OwnerId:    "ingestion-service",
+		ProjectId:  "default", // TODO: Implement this tomorrow
 		FileFormat: FileFormatAvro,
 		FileSize:   totalSize,
 		BatchInfo: &pb.Batches{
@@ -508,11 +503,11 @@ func createFileRegistrationRequest(msgbatch *batcher.MessageBatch, data []byte) 
 	}
 }
 
-func fnv32a(text string) uint32 {
-	algorithm := fnv.New32a()
-	algorithm.Write([]byte(text))
-	return algorithm.Sum32()
-}
+// func fnv32a(text string) uint32 {
+// 	algorithm := fnv.New32a()
+// 	algorithm.Write([]byte(text))
+// 	return algorithm.Sum32()
+// }
 
 // kafkaHeaderCarrier remains the same as in your original code.
 type kafkaHeaderCarrier struct {

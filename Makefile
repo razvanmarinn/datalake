@@ -74,11 +74,12 @@ port-forward:
 	kubectl port-forward -n datalake svc/api-gateway 8083:80&
 	kubectl port-forward -n observability svc/jaeger-query 16686:16686&
 	kubectl port-forward -n datalake svc/identity-service 8082:8082&
+	kubectl port-forward -n datalake svc/schema-registry 8081:8081&
 
 
 
 
-update-all: use-minikube-docker build-images rollout
+update-all: use-minikube-docker build-services rollout
 
 use-minikube-docker:
 	eval $$(minikube docker-env)
