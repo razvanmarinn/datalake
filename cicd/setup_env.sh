@@ -59,12 +59,12 @@ if [ "$1" == "argo=true" ]; then
       --self-heal
 
     # Force a sync of the application to deploy the resources
-    echo "Syncing datalake application..."
-    argocd app sync datalake
+    # echo "Syncing datalake application..."
+    # argocd app sync datalake
 
-    # Display the status of the application
-    echo "Application status:"
-    argocd app get datalake
+    # # Display the status of the application
+    # echo "Application status:"
+    # argocd app get datalake
 
     echo "--- ArgoCD setup complete! ---"
     echo "ArgoCD UI available at: https://localhost:8080"
