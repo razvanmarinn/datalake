@@ -2,6 +2,7 @@ apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: worker1-new-state-pv # NEW PV NAME
+  namespace: datalake
 spec:
   capacity:
     storage: 10Gi
@@ -16,6 +17,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: worker1-state-pvc # Keep PVC name or change if desired
+  namespace: datalake
 spec:
   accessModes:
     - ReadWriteOnce
@@ -29,6 +31,7 @@ apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: worker2-new-state-pv # NEW PV NAME
+  namespace: datalake
 spec:
   capacity:
     storage: 10Gi
@@ -43,6 +46,7 @@ apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: worker3-new-state-pv # NEW PV NAME
+  namespace: datalake
 spec:
   capacity:
     storage: 10Gi
@@ -57,6 +61,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: worker2-state-pvc # Keep PVC name or change if desired
+  namespace: datalake
 spec:
   accessModes:
     - ReadWriteOnce
@@ -70,6 +75,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: worker3-state-pvc # Keep PVC name or change if desired
+  namespace: datalake
 spec:
   accessModes:
     - ReadWriteOnce

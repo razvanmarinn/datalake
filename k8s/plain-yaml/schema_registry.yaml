@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: schema-registry
+  namespace: datalake
 spec:
   replicas: 1
   selector:
@@ -14,7 +15,7 @@ spec:
     spec:
       containers:
         - name: schema-registry
-          image: datalake/schema-registry:latest
+          image: razvan1y/schema-registry:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081
@@ -49,6 +50,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: schema-registry
+  namespace: datalake
 spec:
   type: ClusterIP
   ports:
@@ -61,6 +63,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: schema-registry-sql
+  namespace: datalake
 data:
   create_tables.sql: |
     CREATE TABLE IF NOT EXISTS schemas (
@@ -86,6 +89,7 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: postgres-pvc
+  namespace: datalake
 spec:
   accessModes:
     - ReadWriteOnce
@@ -99,6 +103,7 @@ apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: postgres-pv
+  namespace: datalake
 spec:
   capacity:
     storage: 1Gi
@@ -122,6 +127,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgres
+  namespace: datalake
 spec:
   replicas: 1
   selector:
@@ -162,6 +168,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: postgres
+  namespace: datalake
 spec:
   type: ClusterIP
   ports:

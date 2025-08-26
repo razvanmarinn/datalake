@@ -17,8 +17,8 @@ spec:
       containers:
         - name: ingestion-consumer
           # Make sure this image is accessible from your Kubernetes cluster
-          image: datalake/ingestion:latest
-          imagePullPolicy: Never
+          image: razvan1y/ingestion:latest
+          imagePullPolicy: Always
           env:
             - name: KAFKA_BROKERS
               # Use the comma-separated list of broker DNS names from the headless service

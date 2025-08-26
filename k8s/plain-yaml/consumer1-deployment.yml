@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: ingestion-consumer
-          image: datalake/ingestion:latest # Consider using a specific version tag instead of 'latest'
-          imagePullPolicy: Never
+          image: razvan1y/ingestion:latest # Consider using a specific version tag instead of 'latest'
+          imagePullPolicy: Always
           env:
             - name: KAFKA_BROKERS
               # Corrected FQDNs for brokers in the 'kafka' namespace
