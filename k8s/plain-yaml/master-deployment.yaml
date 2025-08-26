@@ -16,7 +16,7 @@ spec:
       containers:
         - name: master
           image: razvan1y/master:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 50055
 ---

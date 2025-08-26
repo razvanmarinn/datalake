@@ -16,7 +16,7 @@ spec:
       containers:
         - name: schema-registry
           image: razvan1y/schema-registry:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8081
           env:

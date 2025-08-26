@@ -16,7 +16,7 @@ spec:
       containers:
         - name: worker
           image: razvan1y/worker:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 50051
           env:
@@ -63,7 +63,7 @@ spec:
       containers:
         - name: worker
           image: razvan1y/worker:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 50052
           env:
@@ -110,7 +110,7 @@ spec:
       containers:
         - name: worker
           image: razvan1y/worker:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 50053
           env:

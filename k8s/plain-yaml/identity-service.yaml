@@ -16,7 +16,7 @@ spec:
       containers:
         - name: identity-service
           image: razvan1y/identity:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 8082
             - containerPort: 50056
