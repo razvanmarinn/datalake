@@ -33,6 +33,39 @@ type Message struct {
 	Value []byte
 }
 
+type Batcher struct {
+	Topic       string
+	MaxMessages int
+	Batches     chan *MessageBatch
+	Current     *MessageBatch
+}
+
+func NewBatcher(topic string, maxMessages int) *Batcher {
+	return &Batcher{
+		Topic:       topic,
+		MaxMessages: maxMessages,
+		Batches:     make(chan *MessageBatch, 100), // Buffered channel to hold batches
+		Current:     NewMessageBatch(topic),
+	}
+}
+
+func (b *Batcher) AddMessage(key, value []byte) {
+	fmt.Printf("Adding message to batch. Current size: %d\n", b.Current.Size())
+	b.Current.AddMessage(key, value)
+	if b.Current.Size() >= b.MaxMessages {
+		b.Batches <- b.Current
+		b.Current = NewMessageBatch(b.Topic)
+	}
+}
+
+func (b *Batcher) FlushCurrent() {
+	fmt.Printf("Flushing current batch. Current size: %d\n", b.Current.Size())
+	if b.Current.Size() > 0 {
+		b.Batches <- b.Current
+		b.Current = NewMessageBatch(b.Topic)
+	}
+
+}
 func NewMessageBatch(topic string) *MessageBatch {
 	return &MessageBatch{
 		UUID:     uuid.New(),

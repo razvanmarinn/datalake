@@ -1,7 +1,8 @@
 #!/bin/bash
 
   minikube delete
-  minikube start
+  minikube start --mount --mount-string="/Users/marinrazvan/Developer/datalake/worker_data:/datalake/worker_data"
+
   eval $(minikube docker-env)
     
     
@@ -43,6 +44,9 @@ if [ "$1" == "argo=true" ]; then
 
     sleep 5
 
+
+
+    ./setup_jaeger.sh
     # Log in to ArgoCD using the initial credentials
     echo "Logging in to ArgoCD..."
     argocd login localhost:8080 --username admin --password "$pw" --insecure
@@ -80,5 +84,3 @@ else
     echo "--- Direct kubectl apply setup complete! ---"
 fi
 
-# Note: The original 'make port-forward' command seems to be a separate step
-# to forward a different service after deployment. You can run it manually.

@@ -64,7 +64,7 @@ deploy-all:
 
 port-forward:
 	kubectl port-forward -n datalake svc/api-gateway 8083:80&
-#	kubectl port-forward -n observability svc/jaeger-query 16686:16686&
+	kubectl port-forward -n observability svc/jaeger-query 16686:16686&
 	kubectl port-forward -n datalake svc/identity-service 8082:8082&
 	kubectl port-forward -n datalake svc/schema-registry 8081:8081&
 

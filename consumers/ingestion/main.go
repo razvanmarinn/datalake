@@ -64,7 +64,7 @@ type App struct {
 	logger         *slog.Logger
 
 	// Shared resources with thread-safe access
-	batcher       *batcher.MessageBatch
+	batcher       *batcher.Batcher
 	batcherLock   sync.Mutex
 	schemaCache   *SchemaCache
 	grpcConnCache *GRPCConnCache
@@ -199,7 +199,7 @@ func NewApp(cfg Config, logger *slog.Logger) (*App, error) {
 			Topic:    cfg.KafkaDLTTopic,
 			Balancer: &kafka.LeastBytes{},
 		}),
-		batcher:       batcher.NewMessageBatch(cfg.KafkaTopic),
+		batcher:       batcher.NewBatcher(cfg.KafkaTopic, MaxBatchSize),
 		schemaCache:   NewSchemaCache(),
 		grpcConnCache: NewGRPCConnCache(),
 	}, nil
@@ -291,7 +291,7 @@ func (app *App) processMessage(ctx context.Context, m kafka.Message) {
 
 	app.batcherLock.Lock()
 	app.batcher.AddMessage(m.Key, m.Value)
-	size := len(app.batcher.Messages)
+	size := len(app.batcher.Current.Messages)
 	app.batcherLock.Unlock()
 
 	logger.Debug("message added to batch", "current_batch_size", size)
@@ -303,13 +303,13 @@ func (app *App) processMessage(ctx context.Context, m kafka.Message) {
 
 func (app *App) flushBatch(parentCtx context.Context, trigger string) {
 	app.batcherLock.Lock()
-	if len(app.batcher.Messages) == 0 {
+	if len(app.batcher.Current.Messages) == 0 {
 		app.batcherLock.Unlock()
 		return
 	}
 
-	batchToProcess := app.batcher.Copy()
-	app.batcher.Clean()
+	batchToProcess := app.batcher.Current
+	app.batcher.FlushCurrent()
 	app.batcherLock.Unlock()
 
 	ctx, span := tracer.Start(parentCtx, "ProcessBatch")
