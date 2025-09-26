@@ -10,8 +10,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/razvanmarinn/api_gateway/internal/reverse_proxy"
+	"github.com/razvanmarinn/datalake/pkg/metrics"
 	pb "github.com/razvanmarinn/datalake/protobuf"
-	middleware "github.com/razvanmarinn/datalake/services/jwt/middleware"
+	middleware "github.com/razvanmarinn/datalake/pkg/jwt/middleware"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -84,10 +85,17 @@ func main() {
 	}
 	vs := pb.NewVerificationServiceClient(identity_service_cnn)
 
+	// Initialize metrics
+	gatewayMetrics := metrics.NewGatewayMetrics("api-gateway")
+
 	r := gin.Default()
 
-	// Order matters: OpenTelemetry first to create traces
+	// Setup metrics endpoint
+	metrics.SetupMetricsEndpoint(r)
+
+	// Order matters: OpenTelemetry first to create traces, then metrics
 	r.Use(otelgin.Middleware("api-gateway"))
+	r.Use(gatewayMetrics.PrometheusMiddleware())
 	r.Use(traceDebugMiddleware()) // ADD THIS: Debug middleware
 	r.Use(middleware.AuthMiddleware())
 

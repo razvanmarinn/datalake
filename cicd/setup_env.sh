@@ -47,6 +47,7 @@ if [ "$1" == "argo=true" ]; then
 
 
     ./setup_jaeger.sh
+    ./setup_monitoring.sh
     # Log in to ArgoCD using the initial credentials
     echo "Logging in to ArgoCD..."
     argocd login localhost:8080 --username admin --password "$pw" --insecure
@@ -80,7 +81,8 @@ else
     echo "--- Initiating direct kubectl apply workflow ---"
     echo "Applying all YAML files in k8s/plain-yaml directly..."
     kubectl apply -f ../k8s/plain-yaml/
-    
+    ./setup_monitoring.sh
+
     echo "--- Direct kubectl apply setup complete! ---"
 fi
 

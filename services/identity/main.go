@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/razvanmarinn/datalake/pkg/metrics"
 	pb "github.com/razvanmarinn/datalake/protobuf"
 	"github.com/razvanmarinn/identity_service/internal/db"
 	"github.com/razvanmarinn/identity_service/internal/handlers"
@@ -47,7 +48,17 @@ func main() {
 	kafkaBrokers := strings.Split(kafkaBrokersStr, ",")
 	kafkaWriter := kf.NewKafkaWriter(kafkaBrokers)
 
+	// Initialize metrics
+	serviceMetrics := metrics.NewServiceMetrics("identity-service")
+
 	r := handlers.SetupRouter(database, kafkaWriter)
+
+	// Setup metrics endpoint
+	metrics.SetupMetricsEndpoint(r)
+
+	// Add metrics middleware
+	r.Use(serviceMetrics.PrometheusMiddleware())
+
 	if err := r.Run(":8082"); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("HTTP server failed: %v", err)
 	}

@@ -67,7 +67,9 @@ port-forward:
 	kubectl port-forward -n observability svc/jaeger-query 16686:16686&
 	kubectl port-forward -n datalake svc/identity-service 8082:8082&
 	kubectl port-forward -n datalake svc/schema-registry 8081:8081&
-
+	kubectl port-forward svc/prometheus 9090:9090 -n observability&
+	kubectl port-forward svc/grafana 3000:3000 -n observability&
+	kubectl port-forward svc/alertmanager 9093:9093 -n observability&
 rollout:
 	@if [ -z "$(SERVICE)" ]; then \
 		echo "❌ Please specify SERVICE=<name>"; exit 1; \

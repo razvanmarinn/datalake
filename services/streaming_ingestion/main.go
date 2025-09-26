@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/razvanmarinn/datalake/pkg/metrics"
 	"github.com/razvanmarinn/streaming_ingestion/internal/handlers"
 	kf "github.com/razvanmarinn/streaming_ingestion/internal/kafka"
 
@@ -85,10 +86,14 @@ func main() {
 
 	kafkaWriter := kf.NewKafkaWriter(kafkaBrokers)
 
+	streamingMetrics := metrics.NewStreamingMetrics("streaming-ingestion")
+
 	r := gin.Default()
 
-	// Your existing OpenTelemetry middleware
+	metrics.SetupMetricsEndpoint(r)
+
 	r.Use(otelgin.Middleware("streaming-ingestion"))
+	r.Use(streamingMetrics.PrometheusMiddleware())
 	r.Use(logHeadersMiddleware())
 
 	handlers.SetupRouter(r, kafkaWriter)

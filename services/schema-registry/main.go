@@ -3,12 +3,11 @@ package main
 import (
 	"log"
 
-	"github.com/razvanmarinn/schema-registry/internal/handlers"
-
+	"github.com/razvanmarinn/datalake/pkg/metrics"
 	"github.com/razvanmarinn/schema-registry/internal/db"
+	"github.com/razvanmarinn/schema-registry/internal/handlers"
 )
 
-// test
 func main() {
 	database, err := db.Connect_to_db()
 
@@ -17,6 +16,13 @@ func main() {
 	}
 	defer database.Close()
 
+	serviceMetrics := metrics.NewServiceMetrics("schema-registry")
+
 	r := handlers.SetupRouter(database)
-	r.Run(":8081")
+
+	metrics.SetupMetricsEndpoint(r)
+
+	r.Use(serviceMetrics.PrometheusMiddleware())
+
+	r.Run(":8080")
 }

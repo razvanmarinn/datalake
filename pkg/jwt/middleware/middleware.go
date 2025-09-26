@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/razvanmarinn/datalake/services/jwt/manager"
+	"github.com/razvanmarinn/datalake/pkg/jwt/manager"
 )
 
 func AuthMiddleware() gin.HandlerFunc {
