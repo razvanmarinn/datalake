@@ -1,7 +1,7 @@
 #!/bin/bash
 
   minikube delete
-  minikube start --mount --mount-string="/Users/marinrazvan/Developer/datalake/worker_data:/datalake/worker_data"
+  minikube start --mount --mount-string="/Users/marinrazvan/Developer/datalake/worker_data:/datalake/worker_data" --memory 8192
 
   eval $(minikube docker-env)
     
@@ -19,7 +19,7 @@
   fi
 
 # Check if the first argument is "argo=true" to determine the workflow
-if [ "$1" == "argo=true" ]; then
+if [ "$2" == "argo=true" ]; then
     echo "--- Initiating ArgoCD deployment workflow ---"
     echo "Creating Kubernetes namespaces..."
     kubectl create ns argocd

@@ -1,0 +1,248 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-datasource-loki
+  namespace: observability
+  labels:
+    grafana_datasource: "1"
+data:
+  loki-datasource.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki:3100
+        isDefault: false
+        version: 1
+        editable: true
+        jsonData:
+          maxLines: 1000
+          derivedFields:
+            # Extract trace ID from logs for tracing integration
+            - name: "trace_id"
+              matcherRegex: '"trace_id":"([^"]+)"'
+              url: "http://jaeger-query:16686/trace/$${__value.raw}"
+              datasourceUid: "jaeger"
+            # Extract request ID for correlation
+            - name: "request_id"
+              matcherRegex: '"request_id":"([^"]+)"'
+              url: ""
+          alertmanager:
+            handleGrafanaManagedAlerts: true
+            implementation: prometheus
+            url: http://alertmanager:9093
+---
+# Grafana dashboard for datalake logs
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-datalake-logs
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  datalake-logs.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "Datalake Service Logs",
+        "tags": ["datalake", "logs"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Log Volume by Service",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum by (service) (count_over_time({namespace=\"datalake\"}[5m]))",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "palette-classic"
+                },
+                "custom": {
+                  "displayMode": "list",
+                  "orientation": "horizontal"
+                },
+                "mappings": [],
+                "thresholds": {
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    }
+                  ]
+                }
+              }
+            },
+            "options": {
+              "reduceOptions": {
+                "values": false,
+                "calcs": [
+                  "lastNotNull"
+                ],
+                "fields": ""
+              },
+              "orientation": "auto",
+              "textMode": "auto",
+              "colorMode": "value",
+              "graphMode": "area",
+              "justifyMode": "auto"
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 0,
+              "y": 0
+            }
+          },
+          {
+            "id": 2,
+            "title": "Error Rate by Service",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "sum by (service) (rate({namespace=\"datalake\", level=\"error\"}[5m]))",
+                "refId": "A"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "color": {
+                  "mode": "thresholds"
+                },
+                "custom": {
+                  "displayMode": "list",
+                  "orientation": "horizontal"
+                },
+                "mappings": [],
+                "thresholds": {
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.1
+                    },
+                    {
+                      "color": "red",
+                      "value": 1
+                    }
+                  ]
+                },
+                "unit": "reqps"
+              }
+            },
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 12,
+              "y": 0
+            }
+          },
+          {
+            "id": 3,
+            "title": "Service Logs",
+            "type": "logs",
+            "targets": [
+              {
+                "expr": "{namespace=\"datalake\"} |= \"\"",
+                "refId": "A"
+              }
+            ],
+            "options": {
+              "showTime": true,
+              "showLabels": true,
+              "showCommonLabels": false,
+              "wrapLogMessage": false,
+              "prettifyLogMessage": false,
+              "enableLogDetails": true,
+              "dedupStrategy": "none",
+              "sortOrder": "Descending"
+            },
+            "gridPos": {
+              "h": 16,
+              "w": 24,
+              "x": 0,
+              "y": 8
+            }
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "timepicker": {},
+        "templating": {
+          "list": [
+            {
+              "current": {
+                "selected": false,
+                "text": "All",
+                "value": "$__all"
+              },
+              "datasource": "Loki",
+              "definition": "label_values(service)",
+              "hide": 0,
+              "includeAll": true,
+              "label": "Service",
+              "multi": true,
+              "name": "service",
+              "options": [],
+              "query": "label_values(service)",
+              "refresh": 1,
+              "regex": "",
+              "skipUrlSync": false,
+              "sort": 0,
+              "type": "query"
+            },
+            {
+              "current": {
+                "selected": false,
+                "text": "All",
+                "value": "$__all"
+              },
+              "datasource": "Loki",
+              "definition": "label_values(level)",
+              "hide": 0,
+              "includeAll": true,
+              "label": "Log Level",
+              "multi": true,
+              "name": "level",
+              "options": [],
+              "query": "label_values(level)",
+              "refresh": 1,
+              "regex": "",
+              "skipUrlSync": false,
+              "sort": 0,
+              "type": "query"
+            }
+          ]
+        },
+        "annotations": {
+          "list": [
+            {
+              "datasource": "Loki",
+              "enable": true,
+              "expr": "{namespace=\"datalake\", level=\"error\"}",
+              "iconColor": "red",
+              "name": "Error Logs",
+              "textFormat": "{{message}}"
+            }
+          ]
+        },
+        "refresh": "5s",
+        "schemaVersion": 27,
+        "version": 0,
+        "links": []
+      }
+    }
