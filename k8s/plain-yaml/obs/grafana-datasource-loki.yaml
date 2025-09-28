@@ -13,7 +13,7 @@ data:
       - name: Loki
         type: loki
         access: proxy
-        url: http://loki:3100
+        url: http://loki.observability.svc.cluster.local:3100
         isDefault: false
         version: 1
         editable: true
@@ -23,7 +23,7 @@ data:
             # Extract trace ID from logs for tracing integration
             - name: "trace_id"
               matcherRegex: '"trace_id":"([^"]+)"'
-              url: "http://jaeger-query:16686/trace/$${__value.raw}"
+              url: "http://jaeger-query.observability.svc.cluster.local:16686/trace/$${__value.raw}"
               datasourceUid: "jaeger"
             # Extract request ID for correlation
             - name: "request_id"
@@ -32,7 +32,7 @@ data:
           alertmanager:
             handleGrafanaManagedAlerts: true
             implementation: prometheus
-            url: http://alertmanager:9093
+            url: http://alertmanager.observability.svc.cluster.local:9093
 ---
 # Grafana dashboard for datalake logs
 apiVersion: v1
