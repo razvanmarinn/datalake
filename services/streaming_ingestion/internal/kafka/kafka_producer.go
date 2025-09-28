@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/razvanmarinn/datalake/pkg/metrics"
 	"github.com/segmentio/kafka-go"
 )
 
@@ -12,6 +13,7 @@ type KafkaWriter struct {
 	Writer        *kafka.Writer
 	TopicResolver KafkaTopicResolver
 	Brokers       []string
+	Metrics       *metrics.StreamingMetrics
 }
 
 type KafkaTopicResolver struct{}
@@ -38,6 +40,10 @@ func NewKafkaWriter(brokers []string) *KafkaWriter {
 	}
 }
 
+func (k *KafkaWriter) SetMetrics(metrics *metrics.StreamingMetrics) {
+	k.Metrics = metrics
+}
+
 func (k *KafkaWriter) EnsureTopicExists(ctx context.Context, topic string) (bool, error) {
 	conn, err := kafka.Dial("tcp", k.Brokers[0])
 	if err != nil {
@@ -57,6 +63,10 @@ func (k *KafkaWriter) WriteMessageForSchema(ctx context.Context, projectName str
 
 	topicMessage := message
 	topicMessage.Topic = topic
+
+	if k.Metrics != nil {
+		k.Metrics.KafkaMessagesBatchSize.WithLabelValues(topic).Observe(1) // Single message batch
+	}
 
 	return k.Writer.WriteMessages(ctx, topicMessage)
 }

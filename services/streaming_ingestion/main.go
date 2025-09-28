@@ -87,7 +87,8 @@ func main() {
 	kafkaWriter := kf.NewKafkaWriter(kafkaBrokers)
 
 	streamingMetrics := metrics.NewStreamingMetrics("streaming-ingestion")
-
+	kafkaWriter.SetMetrics(streamingMetrics)
+	fmt.Println("STREAMING METRICS ON")
 	r := gin.Default()
 
 	metrics.SetupMetricsEndpoint(r)

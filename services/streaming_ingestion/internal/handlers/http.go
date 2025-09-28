@@ -61,6 +61,9 @@ func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter) *gin.Engine {
 		ctx := c.Request.Context()
 		tracer := otel.Tracer("streaming-ingestion")
 
+		kf.Metrics.ActiveIngestionSessions.Inc()
+		defer kf.Metrics.ActiveIngestionSessions.Dec()
+
 		// ★ Child span for full handler logic
 		ctx, span := tracer.Start(ctx, "HandleIngestRequest", trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()
@@ -97,16 +100,29 @@ func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter) *gin.Engine {
 
 			jsonData, _ := json.Marshal(msg)
 
+			// Record data ingestion metrics
+			kf.Metrics.DataIngestionBytes.WithLabelValues(msg.ProjectId, "json").Add(float64(len(jsonData)))
+
 			// Inject trace context into Kafka headers
 			headers := make([]kafka.Header, 0)
 			carrier := kafkaHeaderCarrier{headers: &headers}
 			propagator.Inject(ctx, &carrier)
 
-			kf.WriteMessageForSchema(ctx, msg.ProjectId, kafka.Message{
+			topic := kf.TopicResolver.ResolveTopic(msg.SchemaName)
+			err := kf.WriteMessageForSchema(ctx, msg.ProjectId, kafka.Message{
 				Key:     []byte(msg.SchemaName),
 				Value:   jsonData,
 				Headers: headers,
 			})
+
+			if err != nil {
+				kf.Metrics.KafkaProduceErrors.WithLabelValues(topic, "write_error").Inc()
+				child.RecordError(err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write to Kafka"})
+				return
+			} else {
+				kf.Metrics.KafkaMessagesProduced.WithLabelValues(topic).Inc()
+			}
 		}()
 
 		c.JSON(http.StatusOK, gin.H{"status": "data received"})

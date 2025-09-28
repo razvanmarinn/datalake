@@ -4,10 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"os"
 
 	"github.com/google/uuid"
+	"github.com/razvanmarinn/datalake/pkg/logging"
 	"github.com/razvanmarinn/identity_service/internal/db/models"
 
 	_ "github.com/lib/pq"
@@ -36,13 +36,13 @@ func getEnv(key, defaultValue string) string {
 	return value
 }
 
-func Connect_to_db() (*sql.DB, error) {
+func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
 	host, port, user, password, dbname := GetDBConfig()
 
 	defaultConnStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
 		host, port, user, password)
 
-	log.Printf("Connecting to default database at %s:%d", host, port)
+	logger.LogDatabaseConnection(host, port, "postgres")
 	defaultDB, err := sql.Open("postgres", defaultConnStr)
 	if err != nil {
 		return nil, fmt.Errorf("error connecting to default database: %v", err)
@@ -67,13 +67,13 @@ func Connect_to_db() (*sql.DB, error) {
 		if err != nil {
 			return nil, fmt.Errorf("error creating database: %v", err)
 		}
-		log.Printf("Database %s created successfully", dbname)
+		logger.WithDatabase("create").Info("Database created successfully")
 	}
 
 	dbConnStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
 		host, port, user, password, dbname)
 
-	log.Printf("Connecting to target database '%s'", dbname)
+	logger.LogDatabaseConnection(host, port, dbname)
 	db, err := sql.Open("postgres", dbConnStr)
 	if err != nil {
 		return nil, fmt.Errorf("error connecting to target database: %v", err)
@@ -97,7 +97,7 @@ func Connect_to_db() (*sql.DB, error) {
 		return nil, fmt.Errorf("error executing SQL file: %v", err)
 	}
 
-	log.Println("Database tables created successfully")
+	logger.LogDatabaseSuccess(dbname)
 	return db, nil
 }
 

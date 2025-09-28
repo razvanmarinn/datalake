@@ -4,7 +4,7 @@ go 1.23.4
 
 require (
 	github.com/gin-gonic/gin v1.10.1
-	github.com/razvanmarinn/datalake v0.0.0-20250625210629-719ebc5c5fb4
+	github.com/razvanmarinn/datalake v0.0.0-20250926145929-b052102318c0
 	github.com/segmentio/kafka-go v0.4.47
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.62.0
 	go.opentelemetry.io/otel v1.37.0
@@ -13,8 +13,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.37.0
 	google.golang.org/grpc v1.73.0
 )
-
-replace github.com/razvanmarinn/datalake => ../../
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

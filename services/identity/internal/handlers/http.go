@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"database/sql"
-	"log"
 
 	"context"
 	"fmt"
@@ -10,12 +9,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/razvanmarinn/datalake/services/jwt/manager"
+	"github.com/razvanmarinn/datalake/pkg/jwt/manager"
+	"github.com/razvanmarinn/datalake/pkg/logging"
 	"github.com/razvanmarinn/identity_service/internal/db"
 	"github.com/razvanmarinn/identity_service/internal/db/models"
 	kf "github.com/razvanmarinn/identity_service/internal/kafka"
 
 	"github.com/segmentio/kafka-go"
+	"go.uber.org/zap"
 )
 
 type LoginBody struct {
@@ -23,8 +24,15 @@ type LoginBody struct {
 	Password string `json:"password" binding:"required"`
 }
 
-func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter) *gin.Engine {
-	r := gin.Default()
+func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter, logger *logging.Logger) *gin.Engine {
+	r := gin.New()
+
+	// Add recovery middleware (since we're using gin.New() not gin.Default())
+	r.Use(gin.Recovery())
+
+	// Add our structured logging middleware
+	r.Use(logger.GinMiddleware())
+
 	r.StaticFile("/.well-known/jwks.json", "./public/.well-known/jwks.json")
 
 	r.POST("/register/", func(c *gin.Context) {
@@ -34,7 +42,8 @@ func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter) *gin.Engine {
 			return
 		}
 		if err := db.RegisterUser(database, &user); err != nil {
-			log.Printf("Error registering user: %v", err)
+			logger.WithRequest(c).Error("Failed to register user", zap.Error(err))
+			logger.LogUserRegistration(user.Username, false)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register user"})
 			return
 		}
@@ -42,10 +51,11 @@ func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter) *gin.Engine {
 
 		tkn, err := manager.CreateToken(user.Username, projects)
 		if err != nil {
-			log.Printf("Error creating token: %v", err)
+			logger.WithRequest(c).Error("Failed to create token", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token"})
 			return
 		}
+		logger.LogUserRegistration(user.Username, true)
 		c.JSON(http.StatusOK, gin.H{"token": tkn})
 	})
 
@@ -57,25 +67,32 @@ func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter) *gin.Engine {
 		}
 		user, err := db.GetUser(database, loginBody.Username)
 		if err != nil {
-			log.Printf("Error getting user: %v", err)
+			logger.WithRequest(c).Error("Failed to get user", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user"})
 			return
 		}
 		if user == nil {
+			logger.LogUserLogin(loginBody.Username, false)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 			return
 		}
 		if user.Password != loginBody.Password {
+			logger.LogUserLogin(loginBody.Username, false)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 			return
 		}
 		//
 		projects, err := db.GetProjects(database, user.Username)
+		if err != nil {
+			logger.WithRequest(c).Error("Failed to get user projects", zap.Error(err))
+		}
 		tkn, err := manager.CreateToken(loginBody.Username, projects)
 		if err != nil {
+			logger.WithRequest(c).Error("Failed to create token", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create token"})
 			return
 		}
+		logger.LogUserLogin(loginBody.Username, true)
 		c.JSON(http.StatusOK, gin.H{"token": tkn, "user-id": user.ID})
 	})
 
@@ -86,14 +103,21 @@ func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter) *gin.Engine {
 			return
 		}
 		if err := db.RegisterProject(database, &project); err != nil {
+			logger.WithRequest(c).Error("Failed to register project", zap.Error(err))
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register project"})
 			return
 		}
 
-		kafkaWriter.WriteMessageForSchema(context.Background(), project.Name, kafka.Message{
+		kafkaErr := kafkaWriter.WriteMessageForSchema(context.Background(), project.Name, kafka.Message{
 			Key:   []byte(project.Name),
 			Value: []byte(fmt.Sprintf("Project %s registered", project.Name)),
 		})
+		if kafkaErr != nil {
+			logger.LogKafkaMessage(project.Name, project.Name, false)
+		} else {
+			logger.LogKafkaMessage(project.Name, project.Name, true)
+		}
+		logger.LogProjectRegistration(project.Name, project.OwnerID.String())
 		c.JSON(http.StatusOK, gin.H{"message": "Project registered successfully"})
 	})
 
