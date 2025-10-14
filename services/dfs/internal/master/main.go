@@ -10,6 +10,9 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/razvanmarinn/datalake/pkg/logging"
+	"go.uber.org/zap"
+
 	"github.com/google/uuid"
 	pb "github.com/razvanmarinn/datalake/protobuf"
 	"github.com/razvanmarinn/dfs/internal/nodes"
@@ -25,6 +28,7 @@ const (
 type server struct {
 	pb.UnimplementedMasterServiceServer
 	masterNode *nodes.MasterNode
+	logger     *logging.Logger
 }
 
 func (s *server) RegisterFile(ctx context.Context, in *pb.ClientFileRequestToMaster) (*pb.MasterFileResponse, error) {
@@ -35,12 +39,12 @@ func (s *server) RegisterFile(ctx context.Context, in *pb.ClientFileRequestToMas
 }
 
 func (s *server) GetBatchDestination(ctx context.Context, in *pb.ClientBatchRequestToMaster) (*pb.MasterResponse, error) {
-	log.Printf("Received GetBatchDestination request for batch: %v", in.GetBatchId())
+	s.logger.Info("Received GetBatchDestination request for batch: %v", zap.String("batch_id", in.GetBatchId()))
 
 	wid, wm := s.masterNode.LoadBalancer.GetNextClient()
 	batchuuid, err := uuid.Parse(in.GetBatchId())
 	if err != nil {
-		fmt.Printf("Asdasda")
+		s.logger.Error("Invalid batch ID format", zap.String("batch_id", in.GetBatchId()), zap.Error(err))
 	}
 	s.masterNode.UpdateBatchLocation(batchuuid, wid)
 
@@ -48,7 +52,7 @@ func (s *server) GetBatchDestination(ctx context.Context, in *pb.ClientBatchRequ
 }
 
 func (s *server) GetMetadata(ctx context.Context, in *pb.Location) (*pb.MasterMetadataResponse, error) {
-	log.Printf("Received GetMetadata request for file: %v", in.GetFileName())
+	s.logger.Info("Received GetMetadata request for file: %v", zap.String("file_name", in.GetFileName()))
 
 	uuids := s.masterNode.GetFileBatches(in.GetFileName())
 	batch_ids := make([]string, len(uuids))
@@ -66,7 +70,7 @@ func (s *server) GetMetadata(ctx context.Context, in *pb.Location) (*pb.MasterMe
 		for _, wId := range worker_node_ids {
 			_, ip, port, err := s.masterNode.LoadBalancer.GetClientByWorkerID(wId.String())
 			if err != nil {
-				fmt.Printf("Error getting client for worker ID %s: %v\n", wId.String(), err)
+				s.logger.Error("Error getting client for worker ID", zap.String("worker_id", wId.String()), zap.Error(err))
 				continue
 			}
 			combineIpAndPort := func(ip string, port int32) string {
@@ -91,6 +95,8 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.SetOutput(os.Stdout)
 
+	logger := logging.NewDefaultLogger("master_node")
+	defer logger.Sync()
 	state := nodes.NewMasterNodeState()
 	masterNode := nodes.GetMasterNodeInstance()
 
@@ -105,9 +111,10 @@ func main() {
 	s := grpc.NewServer()
 	pb.RegisterMasterServiceServer(s, &server{
 		masterNode: masterNode,
+		logger:     logger,
 	})
 
-	log.Printf("gRPC server listening at %v", lis.Addr())
+	logger.Info("gRPC server listening", zap.String("address", lis.Addr().String()))
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -115,7 +122,7 @@ func main() {
 	go func() {
 		defer wg.Done()
 		if err := s.Serve(lis); err != nil {
-			log.Fatalf("failed to serve: %v", err)
+			logger.Error("gRPC server failed", zap.Error(err))
 		}
 	}()
 
@@ -124,21 +131,21 @@ func main() {
 
 	go func() {
 		sig := <-sigs
-		log.Printf("Received signal: %v", sig)
-		log.Println("Shutting down master node and gRPC server...")
+		logger.Info("Received signal, shutting down", zap.String("signal", sig.String()))
+		logger.Info("Shutting down master node and gRPC server")
 
 		state.UpdateState(masterNode)
 		if err := state.SaveState(); err != nil {
-			log.Printf("Failed to save master node state: %v", err)
+			logger.Error("Failed to save master node state", zap.Error(err))
 		}
 
 		s.GracefulStop()
 		masterNode.Stop()
-		log.Println("Master node and gRPC server stopped")
+		logger.Info("Master node and gRPC server stopped")
 		wg.Done()
 	}()
 
-	log.Println("Master node and gRPC server are running. Press Ctrl+C to stop.")
+	logger.Info("Master node and gRPC server are running. Press Ctrl+C to stop.")
 	wg.Wait()
-	log.Println("Main function exiting")
+	logger.Info("Main function exiting")
 }

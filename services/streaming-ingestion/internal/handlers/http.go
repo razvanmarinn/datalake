@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/razvanmarinn/datalake/pkg/logging"
+	"go.uber.org/zap"
+
 	"github.com/gin-gonic/gin"
 	kf "github.com/razvanmarinn/streaming_ingestion/internal/kafka"
 	"github.com/segmentio/kafka-go"
@@ -56,7 +59,7 @@ func (c *kafkaHeaderCarrier) Keys() []string {
 	return keys
 }
 
-func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter) *gin.Engine {
+func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter, logger *logging.Logger) *gin.Engine {
 	r.POST("/ingest", func(c *gin.Context) {
 		ctx := c.Request.Context()
 		tracer := otel.Tracer("streaming-ingestion")
@@ -72,6 +75,7 @@ func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter) *gin.Engine {
 		if err := c.ShouldBindJSON(&msg); err != nil {
 			span.RecordError(err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			logger.WithError(err).Error("Failed to bind JSON in /ingest")
 			return
 		}
 
@@ -79,17 +83,21 @@ func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter) *gin.Engine {
 			msg.ProjectId = hdr
 		}
 
-		// ★ Child span for topic validation
 		func() {
+			logger.WithProject(msg.ProjectId).Info("Ingesting message for schema", zap.String("schema", msg.SchemaName))
 			ctx, child := tracer.Start(ctx, "EnsureTopicExists")
 			defer child.End()
 
 			topicExists, err := kf.EnsureTopicExists(ctx, kf.TopicResolver.ResolveTopic(msg.SchemaName))
 			if err != nil {
 				child.RecordError(err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify topic"})
+				logger.WithError(err).Error("Failed to verify topic in /ingest")
+				return
 			}
 			if !topicExists {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Topic does not exist"})
+				logger.Error("Topic does not exist in /ingest", zap.String("topic", kf.TopicResolver.ResolveTopic(msg.SchemaName)))
 			}
 		}()
 

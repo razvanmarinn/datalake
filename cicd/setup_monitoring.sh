@@ -23,11 +23,24 @@ kubectl apply -f "${K8S_OBS_DIR}/grafana-deployment.yaml"
 echo "🚨 Deploying AlertManager..."
 kubectl apply -f "${K8S_OBS_DIR}/alertmanager-config.yaml"
 
+# Deploy Loki
+echo "📚 Deploying Loki..."
+kubectl apply -f "${K8S_OBS_DIR}/loki-deployment.yaml"
+kubectl apply -f "${K8S_OBS_DIR}/loki-rbac.yaml"
+kubectl apply -f "${K8S_OBS_DIR}/grafana-datasource-loki.yaml"
+kubectl apply -f "${K8S_OBS_DIR}/promtail-deployment.yaml"
+
+
+
 # Wait for deployments to be ready
 echo "⏳ Waiting for deployments to be ready..."
 kubectl wait --for=condition=available --timeout=300s deployment/prometheus -n observability || echo "⚠️  Prometheus deployment timeout"
 kubectl wait --for=condition=available --timeout=300s deployment/grafana -n observability || echo "⚠️  Grafana deployment timeout"
 kubectl wait --for=condition=available --timeout=300s deployment/alertmanager -n observability || echo "⚠️  AlertManager deployment timeout"
+kubectl wait --for=condition=available --timeout=300s deployment/loki -n observability || echo "⚠️  Loki deployment timeout"
+kubectl wait --for=condition=available --timeout=300s deployment/promtail -n
+
+
 
 # Display access information
 echo ""

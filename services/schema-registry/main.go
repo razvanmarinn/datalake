@@ -1,24 +1,25 @@
 package main
 
 import (
-	"log"
-
+	"github.com/razvanmarinn/datalake/pkg/logging"
 	"github.com/razvanmarinn/datalake/pkg/metrics"
 	"github.com/razvanmarinn/schema-registry/internal/db"
 	"github.com/razvanmarinn/schema-registry/internal/handlers"
+	"go.uber.org/zap"
 )
 
 func main() {
-	database, err := db.Connect_to_db()
+	logger := logging.NewDefaultLogger("schema-registry")
+	serviceMetrics := metrics.NewServiceMetrics("schema-registry")
+	database, err := db.Connect_to_db(logger)
 
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logger.Error("Failed to connect to database: %v", zap.Error(err))
 	}
 	defer database.Close()
 
-	serviceMetrics := metrics.NewServiceMetrics("schema-registry")
 
-	r := handlers.SetupRouter(database)
+	r := handlers.SetupRouter(database, logger)
 
 	metrics.SetupMetricsEndpoint(r)
 

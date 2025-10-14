@@ -8,6 +8,9 @@ import (
 	"log"
 	"os"
 
+	"github.com/razvanmarinn/datalake/pkg/logging"
+	"go.uber.org/zap"
+
 	"github.com/razvanmarinn/schema-registry/internal/models"
 
 	_ "github.com/lib/pq"
@@ -27,7 +30,6 @@ func GetDBConfig() (string, int, string, string, string) {
 	return host, port, user, password, dbname
 }
 
-// getEnv gets an environment variable or returns a default value
 func getEnv(key, defaultValue string) string {
 	value := os.Getenv(key)
 	if value == "" {
@@ -36,13 +38,14 @@ func getEnv(key, defaultValue string) string {
 	return value
 }
 
-func Connect_to_db() (*sql.DB, error) {
+// TODO: Refactor this
+func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
 	host, port, user, password, dbname := GetDBConfig()
 
 	defaultConnStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
 		host, port, user, password)
 
-	log.Printf("Connecting to default database at %s:%d", host, port)
+	logger.Info("Connecting to default database at %s:%d", zap.String("host", host), zap.Int("port", port))
 	defaultDB, err := sql.Open("postgres", defaultConnStr)
 	if err != nil {
 		return nil, fmt.Errorf("error connecting to default database: %v", err)

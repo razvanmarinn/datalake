@@ -1,7 +1,6 @@
 package reverse_proxy
 
 import (
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -9,20 +8,22 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/razvanmarinn/api_gateway/internal/handlers"
+	"github.com/razvanmarinn/datalake/pkg/logging"
 	pb "github.com/razvanmarinn/datalake/protobuf"
+	"go.uber.org/zap"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
 
-func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL string) gin.HandlerFunc {
+func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL string, logger *logging.Logger) gin.HandlerFunc {
 	target, err := url.Parse(targetServiceURL)
 	if err != nil {
-		log.Fatalf("Invalid target URL for StreamingIngestionProxy: %v", err)
+		logger.Fatal("Invalid target URL for StreamingIngestionProxy")
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
-	// Custom director to handle headers and trace propagation
 	proxy.Director = func(req *http.Request) {
 		// Set basic proxy headers
 		req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
@@ -30,12 +31,11 @@ func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL s
 		req.URL.Host = target.Host
 		req.Host = target.Host
 
-		// The path should be set here, before propagation
 		req.URL.Path = "/ingest"
 	}
 
 	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
-		log.Printf("Reverse proxy error: %v", err)
+		logger.Error("Reverse proxy error", zap.Error(err))
 		rw.WriteHeader(http.StatusBadGateway)
 	}
 
@@ -43,21 +43,20 @@ func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL s
 		projectName := c.Param("project")
 		if projectName == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Project name missing in URL"})
-			c.Abort()
+			logger.WithRequest(c).Error("Project name missing in URL", zap.String("url", c.Request.URL.Path))
 			return
 		}
 
 		// Verify project exists
 		exists, err := handlers.CheckProjectExists(vs, projectName)
 		if err != nil {
-			log.Printf("Error verifying project %s: %v", projectName, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify project existence"})
-			c.Abort()
+			logger.WithRequest(c).Error("Failed to verify project existence", zap.Error(err), zap.String("project", projectName))
 			return
 		}
 		if !exists {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found: " + projectName})
-			c.Abort()
+			logger.WithRequest(c).Error("Project not found", zap.String("project", projectName))
 			return
 		}
 
@@ -65,6 +64,7 @@ func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL s
 		userIDIfc, exists := c.Get("userID")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing userID in context"})
+			logger.WithRequest(c).Error("Missing userID in context")
 			return
 		}
 		userID := userIDIfc.(string)
@@ -72,42 +72,33 @@ func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL s
 		projectsIfc, exists := c.Get("projects")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing projects in token"})
+			logger.WithRequest(c).Error("Missing projects in token")
 			return
 		}
 		projects := projectsIfc.(map[string]uuid.UUID)
 		projectID, ok := projects[projectName]
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized for project: " + projectName})
+			logger.WithRequest(c).Error("Unauthorized for project", zap.String("project", projectName))
 			return
 		}
 
-		// FIXED: Correct header assignment
 		c.Request.Header.Set("X-User-ID", userID)
 		c.Request.Header.Set("X-Project-ID", projectID.String())
 
-		// Inject OpenTelemetry trace context into the request headers
-		// This must be done BEFORE calling ServeHTTP
 		otel.GetTextMapPropagator().Inject(c.Request.Context(), propagation.HeaderCarrier(c.Request.Header))
 
-		log.Printf("Forwarding request for project %s to %s with trace context", projectName, target.Host)
-
-		// Log trace headers for debugging
-		if traceParent := c.Request.Header.Get("traceparent"); traceParent != "" {
-			log.Printf("[TRACE] Forwarding traceparent: %s", traceParent)
-		}
-		if traceState := c.Request.Header.Get("tracestate"); traceState != "" {
-			log.Printf("[TRACE] Forwarding tracestate: %s", traceState)
-		}
+		logger.WithProject(projectName).Info("Forwarding request to Streaming Ingestion", zap.String("user_id", userID), zap.String("project_id", projectID.String()), zap.String("path", c.Request.URL.Path))
 
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
 }
 
-func SchemaRegistryProxy(targetServiceURL string) gin.HandlerFunc {
+func SchemaRegistryProxy(targetServiceURL string, logger *logging.Logger) gin.HandlerFunc {
 
 	target, err := url.Parse(targetServiceURL)
 	if err != nil {
-		log.Fatalf("Invalid target URL for SchemaRegistryProxy: %v", err)
+		logger.Fatal("Invalid target URL for SchemaRegistryProxy", zap.Error(err))
 	}
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
@@ -120,20 +111,21 @@ func SchemaRegistryProxy(targetServiceURL string) gin.HandlerFunc {
 	}
 
 	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
-		log.Printf("Reverse proxy error: %v", err)
+		logger.WithError(err).Info("Reverse proxy error", zap.Error(err))
 		rw.WriteHeader(http.StatusBadGateway)
 	}
 
 	return func(c *gin.Context) {
 
 		projectName := c.Param("project") // You can get the project name here
-		log.Printf("Forwarding schema request for project %s to %s", projectName, target.Host)
+		logger.WithRequest(c).Info("Forwarding schema request to Schema Registry", zap.String("path", c.Request.URL.Path))
 
 		originalPath := c.Param("path") // Get the wildcard path part
 
 		userIDIfc, exists := c.Get("userID")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing userID in context"})
+			logger.WithRequest(c).Error("Missing userID in context")
 			return
 		}
 		userID := userIDIfc.(string)
@@ -141,6 +133,7 @@ func SchemaRegistryProxy(targetServiceURL string) gin.HandlerFunc {
 		projectsIfc, exists := c.Get("projects")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing projects in token"})
+			logger.WithRequest(c).Error("Missing projects in token")
 			return
 		}
 		projects := projectsIfc.(map[string]string)
@@ -148,6 +141,7 @@ func SchemaRegistryProxy(targetServiceURL string) gin.HandlerFunc {
 		projectID, ok := projects[projectName]
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized for project: " + projectName})
+			logger.WithRequest(c).Error("Unauthorized for project", zap.String("project", projectName))
 			return
 		}
 
@@ -157,6 +151,7 @@ func SchemaRegistryProxy(targetServiceURL string) gin.HandlerFunc {
 		c.Request.URL.Path = "/schema" + originalPath
 
 		proxy.ServeHTTP(c.Writer, c.Request)
+		logger.WithProject(projectName).Info("Request forwarded to Schema Registry", zap.String("user_id", userID), zap.String("project_id", projectID), zap.String("path", c.Request.URL.Path))
 	}
 }
 

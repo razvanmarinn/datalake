@@ -26,11 +26,8 @@ type LoginBody struct {
 
 func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter, logger *logging.Logger) *gin.Engine {
 	r := gin.New()
-
-	// Add recovery middleware (since we're using gin.New() not gin.Default())
 	r.Use(gin.Recovery())
 
-	// Add our structured logging middleware
 	r.Use(logger.GinMiddleware())
 
 	r.StaticFile("/.well-known/jwks.json", "./public/.well-known/jwks.json")

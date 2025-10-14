@@ -3,7 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"log" // Import the log package
+	"github.com/razvanmarinn/datalake/pkg/logging"
+	
 	"os"
 	"strings"
 
@@ -53,51 +54,36 @@ func initTracer(ctx context.Context) func(context.Context) error {
 	return tp.Shutdown
 }
 
-// ★★★ ADD THIS DEBUGGING FUNCTION ★★★
-// logHeadersMiddleware prints all incoming request headers to the console.
-func logHeadersMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		log.Println("--- [DEBUG] Incoming Request Headers ---")
-		// Loop over header names
-		for key, values := range c.Request.Header {
-			// Loop over all values for the name
-			for _, value := range values {
-				// We convert the key to lowercase to make it easy to search for 'traceparent'
-				log.Printf("[DEBUG] %s: %s\n", strings.ToLower(key), value)
-			}
-		}
-		log.Println("--- [DEBUG] End of Headers ---")
-		c.Next() // Pass control to the next middleware
-	}
-}
+
 
 func main() {
+	logger := logging.NewDefaultLogger("streaming-ingestion")
+	streamingMetrics := metrics.NewStreamingMetrics("streaming-ingestion")
+
 	ctx := context.Background()
+
+
 	shutdown := initTracer(ctx)
 	defer shutdown(ctx)
 
 	kafkaBrokersStr := os.Getenv("KAFKA_BROKERS")
 	if kafkaBrokersStr == "" {
-		fmt.Println("Warning: KAFKA_BROKERS environment variable not set. Defaulting to localhost:9092.")
+		logger.Warn("Warning: KAFKA_BROKERS environment variable not set. Defaulting to localhost:9092.")
 		kafkaBrokersStr = "localhost:9092"
 	}
 	kafkaBrokers := strings.Split(kafkaBrokersStr, ",")
-	fmt.Printf("Using Kafka brokers: %v\n", kafkaBrokers)
 
 	kafkaWriter := kf.NewKafkaWriter(kafkaBrokers)
 
-	streamingMetrics := metrics.NewStreamingMetrics("streaming-ingestion")
 	kafkaWriter.SetMetrics(streamingMetrics)
-	fmt.Println("STREAMING METRICS ON")
 	r := gin.Default()
 
 	metrics.SetupMetricsEndpoint(r)
 
 	r.Use(otelgin.Middleware("streaming-ingestion"))
 	r.Use(streamingMetrics.PrometheusMiddleware())
-	r.Use(logHeadersMiddleware())
 
-	handlers.SetupRouter(r, kafkaWriter)
+	handlers.SetupRouter(r, kafkaWriter, logger)
 
 	r.Run(":8080")
 }
