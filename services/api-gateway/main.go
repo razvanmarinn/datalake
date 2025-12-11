@@ -85,6 +85,7 @@ func main() {
 
 	r.Any("/ingest/:project/", reverse_proxy.StreamingIngestionProxy(vs, "http://streaming-ingestion:8080", logger))
 	r.Any("/schema_registry/:project/*path", reverse_proxy.SchemaRegistryProxy("http://schema-registry:8080", logger))
+	// r.GET("/files/:project/metadata", reverse_proxy.SchemaRegistryProxy())
 
 	srv := &http.Server{
 		Addr:    ":8080",

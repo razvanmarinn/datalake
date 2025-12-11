@@ -12,4 +12,6 @@ service MasterService {
     rpc GetBatchDestination(common.ClientBatchRequestToMaster) returns (common.MasterResponse) {}
 
     rpc GetMetadata(common.Location) returns (common.MasterMetadataResponse) {}
+
+    rpc GetFileListForProject(common.ApiRequestForFileList) returns (common.FileListResponse) {}
 }

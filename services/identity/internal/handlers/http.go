@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/razvanmarinn/datalake/pkg/jwt/manager"
@@ -27,7 +28,13 @@ type LoginBody struct {
 func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter, logger *logging.Logger) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
-
+	config := cors.Config{
+		AllowOrigins:     []string{"http://localhost:3001"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Content-Type", "Authorization"},
+		AllowCredentials: true,
+	}
+	r.Use(cors.New(config))
 	r.Use(logger.GinMiddleware())
 
 	r.StaticFile("/.well-known/jwks.json", "./public/.well-known/jwks.json")

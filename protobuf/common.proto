@@ -52,3 +52,12 @@ message MasterMetadataResponse {
 message Location {
     string file_name = 1;
 }
+
+message ApiRequestForFileList {
+    string owner_id = 1 ;
+    string project_id = 2;
+}
+
+message FileListResponse {
+    repeated string file_list_names = 1;
+}

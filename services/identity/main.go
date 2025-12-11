@@ -69,7 +69,6 @@ func main() {
 	serviceMetrics := metrics.NewServiceMetrics("identity-service")
 
 	r := handlers.SetupRouter(database, kafkaWriter, logger)
-
 	// Setup metrics endpoint
 	metrics.SetupMetricsEndpoint(r)
 

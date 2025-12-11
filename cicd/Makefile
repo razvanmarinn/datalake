@@ -11,7 +11,8 @@ SERVICE_MAPPINGS = \
 	services/data-catalog:data-catalog-deployment.yaml:data-catalog \
 	services/identity:identity-service.yaml:identity-service \
 	services/schema-registry:schema_registry.yaml:schema-registry \
-	services/streaming-ingestion:stream_ingest.yml:streaming-ingestion
+	services/streaming-ingestion:stream_ingest.yml:streaming-ingestion\
+	services/query-service:query-service.yml:query-service
 
 export DOCKER_BUILDKIT=1
 
@@ -137,7 +138,6 @@ rollout-all:
 
 # Helper targets
 list-services:
-	@echo "📋 Available services:"
 	@echo "$(SERVICE_MAPPINGS)" | tr ' ' '\n' | while IFS=':' read -r path file name; do \
 		echo "  - $$name ($$path)"; \
 	done

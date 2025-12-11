@@ -91,6 +91,16 @@ func (s *server) GetMetadata(ctx context.Context, in *pb.Location) (*pb.MasterMe
 	}, nil
 }
 
+func (s *server) GetFileListForProject(ctx context.Context, in *pb.ApiRequestForFileList) (*pb.FileListResponse, error) {
+	fileList := make([]string, 0)
+	for _, file := range s.masterNode.FileRegistry {
+		if file.OwnerID == in.OwnerId && file.ProjectID == in.ProjectID {
+			fileList = append(fileList, file.Name)
+		}
+	}
+	return &pb.FileListResponse{fileListNames: fileList}, nil
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.SetOutput(os.Stdout)
