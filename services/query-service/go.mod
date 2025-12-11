@@ -3,8 +3,9 @@ module github.com/razvanmarinn/query_service
 go 1.24.11
 
 require (
+	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.11.0
-	github.com/razvanmarinn/datalake v0.0.0-20251014232657-37b92653dfd0
+	github.com/razvanmarinn/datalake v0.0.0-20251211222147-b65207e7a115
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.64.0
 	go.opentelemetry.io/otel v1.39.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.39.0
@@ -15,6 +16,8 @@ require (
 )
 
 require (
+	github.com/MicahParks/jwkset v0.11.0 // indirect
+	github.com/MicahParks/keyfunc/v3 v3.6.2 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.14.2 // indirect
 	github.com/bytedance/sonic/loader v0.4.0 // indirect
@@ -30,6 +33,7 @@ require (
 	github.com/go-playground/validator/v10 v10.28.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.19.0 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.27.3 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -53,6 +57,7 @@ require (
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sys v0.39.0 // indirect
 	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/time v0.12.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251202230838-ff82c1b0f217 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect

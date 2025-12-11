@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"log"
+
 	"os"
 	"strings"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/razvanmarinn/query_service/internal/grpc"
+	middleware "github.com/razvanmarinn/datalake/pkg/jwt/middleware"
+	i_grpc "github.com/razvanmarinn/query_service/internal/grpc"
 	"github.com/razvanmarinn/query_service/internal/handlers"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
@@ -17,6 +20,8 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -29,11 +34,11 @@ func main() {
 	ctx := context.Background()
 
 	// Initialize OpenTelemetry
-	shutdown, err := initTracerProvider(ctx)
+	shutdown := initTracer(ctx, logger)
 	if err != nil {
 		logger.Fatal("failed to initialize tracer provider", zap.Error(err))
 	}
-	defer shutdown()
+	defer shutdown(ctx)
 
 	// Meter Provider
 	meter := otel.Meter("query-service")
@@ -52,15 +57,15 @@ func main() {
 		logger.Fatal("WORKER_SERVICE_ADDRESSES environment variable not set")
 	}
 
-	masterClient, err := grpc.NewMasterClient(masterAddress)
+	masterClient, err := i_grpc.NewMasterClient(masterAddress)
 	if err != nil {
 		logger.Fatal("Failed to create master client", zap.Error(err))
 	}
 	defer masterClient.Close()
 
-	workerClients := make(map[string]*grpc.WorkerClient)
+	workerClients := make(map[string]*i_grpc.WorkerClient)
 	for _, addr := range strings.Split(workerAddresses, ",") {
-		client, err := grpc.NewWorkerClient(addr)
+		client, err := i_grpc.NewWorkerClient(addr)
 		if err != nil {
 			logger.Fatal("Failed to create worker client", zap.String("address", addr), zap.Error(err))
 		}
@@ -70,9 +75,16 @@ func main() {
 
 	queryHandler := handlers.NewQueryHandler(logger, masterClient, workerClients, queryCounter)
 
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())
 	r.Use(otelgin.Middleware("query-service"))
-
+	config := cors.Config{
+		AllowOrigins:     []string{"http://localhost:3001"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Content-Type", "Authorization"},
+		AllowCredentials: true,
+	}
+	r.Use(cors.New(config))
 	// A health check endpoint
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
@@ -82,46 +94,40 @@ func main() {
 
 	// The main query endpoint
 	r.GET("/query", queryHandler.GetData)
+	r.GET("/get_file_list/:project", middleware.AuthMiddleware(), queryHandler.GetFileList)
 
 	logger.Info("Starting server on port 8086")
 	r.Run(":8086")
 }
-
-func initTracerProvider(ctx context.Context) (func(), error) {
-	otelAgentAddr, ok := os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	if !ok {
-		otelAgentAddr = "0.0.0.0:4317"
+func initTracer(ctx context.Context, logger *zap.Logger) func(context.Context) error {
+	conn, err := grpc.DialContext(ctx, "otel-collector.observability.svc.cluster.local:4317", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		logger.Fatal("failed to create gRPC connection to collector")
 	}
-
+	exporter, err := otlptracegrpc.New(ctx, otlptracegrpc.WithGRPCConn(conn))
+	if err != nil {
+		logger.Fatal("failed to create OTLP trace exporter:")
+	}
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
-			semconv.ServiceNameKey.String("query-service"),
+			semconv.ServiceName("api-gateway"),
 		),
 	)
 	if err != nil {
-		return nil, err
+		logger.Fatal("failed to create resource")
 	}
-
-	traceExporter, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithInsecure(),
-		otlptracegrpc.WithEndpoint(otelAgentAddr),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	bsp := sdktrace.NewBatchSpanProcessor(traceExporter)
-	tracerProvider := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
-		sdktrace.WithSpanProcessor(bsp),
 	)
-	otel.SetTracerProvider(tracerProvider)
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+	otel.SetTracerProvider(tp)
 
-	return func() {
-		if err := tracerProvider.Shutdown(ctx); err != nil {
-			log.Printf("failed to shutdown tracer provider: %v", err)
-		}
-	}, nil
+	// ADD THIS: Configure trace propagation
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+
+	logger.Info("OpenTelemetry tracer initialized with propagation")
+	return tp.Shutdown
 }

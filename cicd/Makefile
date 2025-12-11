@@ -29,6 +29,16 @@ docker-login:
 	@echo "🔒 Logging into Docker Hub..."
 	docker login
 
+deploy-master:
+	docker build -t datalake/dfs-master:latest -f ../services/dfs/Dockerfile.master ../services/dfs
+	docker tag datalake/dfs-master:latest $(REGISTRY)/dfs-master:latest
+	docker push $(REGISTRY)/dfs-master:latest
+	@echo "☸️  Deploying to Kubernetes..."
+	kubectl apply -f $(K8S_DIR)/master-deployment.yaml -n $(NAMESPACE)
+	kubectl set image deployment/master master=$(REGISTRY)/dfs-master:latest -n $(NAMESPACE)
+	kubectl rollout restart deployment/master -n $(NAMESPACE)
+	@echo "✅ dfs-master deployed successfully!"
+
 deploy:
 	@if [ -z "$(SERVICE)" ]; then \
 		echo "❌ Please specify SERVICE=<name>"; exit 1; \
@@ -106,6 +116,7 @@ port-forward:
 	kubectl port-forward svc/grafana 3000:3000 -n observability > /dev/null 2>&1 &
 	kubectl port-forward svc/alertmanager 9093:9093 -n observability > /dev/null 2>&1 &
 	kubectl port-forward svc/loki 3100:3100 -n observability > /dev/null 2>&1 &
+	kubectl port-forward svc/query-service 8086:80 -n datalake > /dev/null 2>&1 &
 	@echo "✅ Port forwards started:"
 	@echo "  - API Gateway:     http://localhost:8083"
 	@echo "  - Identity Service: http://localhost:8082"
@@ -115,6 +126,7 @@ port-forward:
 	@echo "  - Jaeger:          http://localhost:16686"
 	@echo "  - AlertManager:    http://localhost:9093"
 	@echo "  - Loki:            http://localhost:3100"
+	@echo "  - Query Service:   http://localhost:8087"
 rollout:
 	@if [ -z "$(SERVICE)" ]; then \
 		echo "❌ Please specify SERVICE=<name>"; exit 1; \

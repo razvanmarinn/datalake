@@ -92,13 +92,24 @@ func (s *server) GetMetadata(ctx context.Context, in *pb.Location) (*pb.MasterMe
 }
 
 func (s *server) GetFileListForProject(ctx context.Context, in *pb.ApiRequestForFileList) (*pb.FileListResponse, error) {
+	log.Printf("GetFileListForProject called with OwnerID=%s, ProjectID=%s", in.OwnerId, in.ProjectId)
+
+	// Log the full FileRegistry
+	log.Printf("Current FileRegistry: %+v", s.masterNode.FileRegistry)
+
 	fileList := make([]string, 0)
+
 	for _, file := range s.masterNode.FileRegistry {
-		if file.OwnerID == in.OwnerId && file.ProjectID == in.ProjectID {
+		log.Printf("Checking file: Name=%s, OwnerID=%s, ProjectID=%s", file.Name, file.OwnerID, file.ProjectID)
+
+		if file.OwnerID == in.OwnerId && file.ProjectID == in.ProjectId {
+			log.Printf("Adding file to response: %s", file.Name)
 			fileList = append(fileList, file.Name)
 		}
 	}
-	return &pb.FileListResponse{fileListNames: fileList}, nil
+
+	log.Printf("Total files found: %d", len(fileList))
+	return &pb.FileListResponse{FileListNames: fileList}, nil
 }
 
 func main() {

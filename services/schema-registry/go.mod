@@ -6,7 +6,8 @@ require (
 	github.com/gin-gonic/gin v1.10.1
 	github.com/lib/pq v1.10.9
 	github.com/linkedin/goavro/v2 v2.13.1
-	github.com/razvanmarinn/datalake v0.0.0-20250625210629-719ebc5c5fb4
+	github.com/razvanmarinn/datalake v0.0.0-20251211222147-b65207e7a115
+	go.uber.org/zap v1.27.0
 )
 
 replace github.com/razvanmarinn/datalake => ../../
@@ -38,7 +39,6 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
-	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/arch v0.15.0 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/net v0.40.0 // indirect

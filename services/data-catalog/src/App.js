@@ -10,6 +10,9 @@ function App() {
   const [query, setQuery] = useState("");
   const [queryResult, setQueryResult] = useState(null);
 
+  // NEW
+  const [project, setProject] = useState("");
+
   useEffect(() => {
     if (token) {
       axios.get("/mock-data.json").then((res) => setDatasets(res.data));
@@ -41,52 +44,60 @@ function App() {
           <h1 className="text-2xl font-bold mb-6 text-center">Login</h1>
           <form onSubmit={handleLogin}>
             <div className="mb-4">
-              <label
-                className="block text-gray-700 text-sm font-bold mb-2"
-                htmlFor="username"
-              >
+              <label className="block text-gray-700 text-sm font-bold mb-2">
                 Username
               </label>
               <input
                 type="text"
-                id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700"
               />
             </div>
+
             <div className="mb-6">
-              <label
-                className="block text-gray-700 text-sm font-bold mb-2"
-                htmlFor="password"
-              >
+              <label className="block text-gray-700 text-sm font-bold mb-2">
                 Password
               </label>
               <input
                 type="password"
-                id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 mb-3 leading-tight focus:outline-none focus:shadow-outline"
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700"
               />
             </div>
-            <div className="flex items-center justify-between">
-              <button
-                type="submit"
-                className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
-              >
-                Sign In
-              </button>
-            </div>
+
+            <button
+              type="submit"
+              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+            >
+              Sign In
+            </button>
           </form>
         </div>
       </div>
     );
   }
 
+  const handleGetFileList = async (project) => {
+    try {
+      const response = await axios.get(
+        `http://localhost:8086/get_file_list/${project}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+      setQueryResult(JSON.stringify(response.data, null, 2));
+    } catch (error) {
+      console.error("Get file list failed", error);
+      setQueryResult("Get file list failed");
+    }
+  };
+
   const handleQuery = async (e) => {
     e.preventDefault();
-
     try {
       const response = await axios.get(
         `http://localhost:8086/query?file_name=${query}`,
@@ -96,11 +107,9 @@ function App() {
           },
         },
       );
-
       setQueryResult(JSON.stringify(response.data, null, 2));
     } catch (error) {
       console.error("Query failed", error);
-
       setQueryResult("Query failed");
     }
   };
@@ -113,12 +122,33 @@ function App() {
 
           <button
             onClick={() => setToken(null)}
-            className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+            className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
           >
             Logout
           </button>
         </div>
 
+        {/* NEW: Project input + Get File List button */}
+        <div className="mb-6">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              placeholder="Enter project name..."
+              value={project}
+              onChange={(e) => setProject(e.target.value)}
+              className="border rounded-lg p-2 w-full focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+
+            <button
+              onClick={() => handleGetFileList(project)}
+              className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+            >
+              Get File List
+            </button>
+          </div>
+        </div>
+
+        {/* Existing Query Section */}
         <div className="mb-6">
           <form onSubmit={handleQuery} className="flex gap-2">
             <input
@@ -131,7 +161,7 @@ function App() {
 
             <button
               type="submit"
-              className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+              className="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
             >
               Query
             </button>
@@ -140,7 +170,6 @@ function App() {
           {queryResult && (
             <div className="mt-4 p-4 bg-gray-100 rounded">
               <h3 className="font-bold">Query Result:</h3>
-
               <pre>{queryResult}</pre>
             </div>
           )}
@@ -154,17 +183,15 @@ function App() {
           className="border rounded-lg p-2 w-full mb-4 focus:outline-none focus:ring-2 focus:ring-blue-400"
         />
 
+        {/* Table stays the same but Actions column removed */}
         <table className="table-auto w-full border-collapse border border-gray-200 text-sm">
           <thead className="bg-gray-100">
             <tr>
               <th className="border border-gray-200 p-2 text-left">Name</th>
-
               <th className="border border-gray-200 p-2 text-left">
                 Description
               </th>
-
               <th className="border border-gray-200 p-2 text-left">Format</th>
-
               <th className="border border-gray-200 p-2 text-left">Size</th>
             </tr>
           </thead>
@@ -175,11 +202,8 @@ function App() {
                 <td className="border border-gray-200 p-2 font-medium">
                   {d.name}
                 </td>
-
                 <td className="border border-gray-200 p-2">{d.description}</td>
-
                 <td className="border border-gray-200 p-2">{d.format}</td>
-
                 <td className="border border-gray-200 p-2">{d.size}</td>
               </tr>
             ))}

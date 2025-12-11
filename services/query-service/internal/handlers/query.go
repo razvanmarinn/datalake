@@ -28,6 +28,42 @@ func NewQueryHandler(logger *zap.Logger, masterClient *grpc.MasterClient, worker
 	}
 }
 
+func (h *QueryHandler) GetFileList(c *gin.Context) {
+	ownerIdVal, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing owner ID"})
+		return
+	}
+	ownerId := ownerIdVal.(string)
+	h.logger.Info("Owner id", zap.String("ownerId", ownerId))
+
+	projectID := c.Param("project")
+	if projectID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing project parameter"})
+		return
+	}
+
+	h.logger.Info("Attempting GetFileListForProject RPC",
+		zap.String("OwnerID", ownerId),
+		zap.String("ProjectID", projectID),
+	)
+
+	resp, err := h.MasterClient.GetFileListForProject(
+		c.Request.Context(),
+		ownerId,
+		projectID,
+	)
+
+	if err != nil {
+		h.logger.Error("MasterClient RPC Failed", zap.Error(err))
+
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal master service error: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
 // GetData retrieves file data from the workers.
 func (h *QueryHandler) GetData(c *gin.Context) {
 	h.QueryCounter.Add(c.Request.Context(), 1)
