@@ -19,9 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	MasterService_RegisterFile_FullMethodName        = "/master_dfs.MasterService/RegisterFile"
-	MasterService_GetBatchDestination_FullMethodName = "/master_dfs.MasterService/GetBatchDestination"
-	MasterService_GetMetadata_FullMethodName         = "/master_dfs.MasterService/GetMetadata"
+	MasterService_RegisterFile_FullMethodName          = "/master_dfs.MasterService/RegisterFile"
+	MasterService_GetBatchDestination_FullMethodName   = "/master_dfs.MasterService/GetBatchDestination"
+	MasterService_GetMetadata_FullMethodName           = "/master_dfs.MasterService/GetMetadata"
+	MasterService_GetFileListForProject_FullMethodName = "/master_dfs.MasterService/GetFileListForProject"
 )
 
 // MasterServiceClient is the client API for MasterService service.
@@ -31,6 +32,7 @@ type MasterServiceClient interface {
 	RegisterFile(ctx context.Context, in *ClientFileRequestToMaster, opts ...grpc.CallOption) (*MasterFileResponse, error)
 	GetBatchDestination(ctx context.Context, in *ClientBatchRequestToMaster, opts ...grpc.CallOption) (*MasterResponse, error)
 	GetMetadata(ctx context.Context, in *Location, opts ...grpc.CallOption) (*MasterMetadataResponse, error)
+	GetFileListForProject(ctx context.Context, in *ApiRequestForFileList, opts ...grpc.CallOption) (*FileListResponse, error)
 }
 
 type masterServiceClient struct {
@@ -71,6 +73,16 @@ func (c *masterServiceClient) GetMetadata(ctx context.Context, in *Location, opt
 	return out, nil
 }
 
+func (c *masterServiceClient) GetFileListForProject(ctx context.Context, in *ApiRequestForFileList, opts ...grpc.CallOption) (*FileListResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FileListResponse)
+	err := c.cc.Invoke(ctx, MasterService_GetFileListForProject_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MasterServiceServer is the server API for MasterService service.
 // All implementations must embed UnimplementedMasterServiceServer
 // for forward compatibility.
@@ -78,6 +90,7 @@ type MasterServiceServer interface {
 	RegisterFile(context.Context, *ClientFileRequestToMaster) (*MasterFileResponse, error)
 	GetBatchDestination(context.Context, *ClientBatchRequestToMaster) (*MasterResponse, error)
 	GetMetadata(context.Context, *Location) (*MasterMetadataResponse, error)
+	GetFileListForProject(context.Context, *ApiRequestForFileList) (*FileListResponse, error)
 	mustEmbedUnimplementedMasterServiceServer()
 }
 
@@ -96,6 +109,9 @@ func (UnimplementedMasterServiceServer) GetBatchDestination(context.Context, *Cl
 }
 func (UnimplementedMasterServiceServer) GetMetadata(context.Context, *Location) (*MasterMetadataResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMetadata not implemented")
+}
+func (UnimplementedMasterServiceServer) GetFileListForProject(context.Context, *ApiRequestForFileList) (*FileListResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetFileListForProject not implemented")
 }
 func (UnimplementedMasterServiceServer) mustEmbedUnimplementedMasterServiceServer() {}
 func (UnimplementedMasterServiceServer) testEmbeddedByValue()                       {}
@@ -172,6 +188,24 @@ func _MasterService_GetMetadata_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MasterService_GetFileListForProject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApiRequestForFileList)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MasterServiceServer).GetFileListForProject(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MasterService_GetFileListForProject_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MasterServiceServer).GetFileListForProject(ctx, req.(*ApiRequestForFileList))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MasterService_ServiceDesc is the grpc.ServiceDesc for MasterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +224,10 @@ var MasterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetMetadata",
 			Handler:    _MasterService_GetMetadata_Handler,
+		},
+		{
+			MethodName: "GetFileListForProject",
+			Handler:    _MasterService_GetFileListForProject_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
