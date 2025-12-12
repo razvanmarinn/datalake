@@ -365,6 +365,8 @@ func (app *App) registerFileMetadata(ctx context.Context, msgbatch *batcher.Mess
 
 	// 1. Register File with Master
 	fileReq := createFileRegistrationRequest(msgbatch, avroBytes, msgbatch.Messages[0].OwnerId, msgbatch.Messages[0].ProjectId)
+
+	fmt.Printf("Registering file: %+v\n", fileReq)
 	_, err = masterClient.RegisterFile(ctx, fileReq)
 	if err != nil {
 		return fmt.Errorf("failed to register file with master: %w", err)

@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: ingestion-consumer
-          image: razvan1y/ingestion:latest
+          image: razvan1y/ingestion-consumer:latest
           imagePullPolicy: Always
           env:
             - name: KAFKA_BROKERS
