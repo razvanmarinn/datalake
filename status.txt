@@ -1,0 +1,4 @@
+### 12/12/2025
+
+Made data catalog retrieve file list from dfs master
+still need to work on the owner id and project cause they are marked as ingestion service / .. check tomorrow

@@ -15,4 +15,6 @@ service WorkerService {
 message AvroBatchRequest {
     string batch_id = 1;    // Unique identifier for the Avro batch
     bytes avro_data = 2;    // Avro-encoded batch data
+    string owner_id = 3;    // ID of the owner
+    string project_id = 4;  // ID of the project
 }

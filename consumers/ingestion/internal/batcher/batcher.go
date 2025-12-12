@@ -23,14 +23,18 @@ type Schema struct {
 	Version int     `json:"version"`
 }
 type MessageBatch struct {
-	UUID     uuid.UUID
-	Topic    string
-	Messages []Message
+	UUID      uuid.UUID
+	Topic     string
+	Messages  []Message
+	OwnerId   string
+	ProjectId string
 }
 
 type Message struct {
-	Key   []byte
-	Value []byte
+	Key       []byte
+	Value     []byte
+	OwnerId   string
+	ProjectId string
 }
 
 type Batcher struct {
@@ -49,9 +53,9 @@ func NewBatcher(topic string, maxMessages int) *Batcher {
 	}
 }
 
-func (b *Batcher) AddMessage(key, value []byte) {
+func (b *Batcher) AddMessage(key, value []byte, ownerId, projectId string) {
 	fmt.Printf("Adding message to batch. Current size: %d\n", b.Current.Size())
-	b.Current.AddMessage(key, value)
+	b.Current.AddMessage(key, value, ownerId, projectId)
 	if b.Current.Size() >= b.MaxMessages {
 		b.Batches <- b.Current
 		b.Current = NewMessageBatch(b.Topic)
@@ -74,10 +78,12 @@ func NewMessageBatch(topic string) *MessageBatch {
 	}
 }
 
-func (mb *MessageBatch) AddMessage(key, value []byte) {
+func (mb *MessageBatch) AddMessage(key, value []byte, ownerId, projectId string) {
 	mb.Messages = append(mb.Messages, Message{
-		Key:   key,
-		Value: value,
+		Key:       key,
+		Value:     value,
+		OwnerId:   ownerId,
+		ProjectId: projectId,
 	})
 }
 

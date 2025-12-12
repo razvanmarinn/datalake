@@ -83,7 +83,7 @@ func main() {
 	r.Use(gatewayMetrics.PrometheusMiddleware())
 	r.Use(middleware.AuthMiddleware())
 
-	r.Any("/ingest/:project/", reverse_proxy.StreamingIngestionProxy(vs, "http://streaming-ingestion:8080", logger))
+	r.Any("/ingest/", reverse_proxy.StreamingIngestionProxy(vs, "http://streaming-ingestion:8080", logger))
 	r.Any("/schema_registry/:project/*path", reverse_proxy.SchemaRegistryProxy("http://schema-registry:8080", logger))
 	// r.GET("/files/:project/metadata", reverse_proxy.SchemaRegistryProxy())
 

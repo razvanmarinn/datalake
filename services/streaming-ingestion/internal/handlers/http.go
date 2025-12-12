@@ -23,6 +23,7 @@ var propagator = propagation.NewCompositeTextMapPropagator(
 type IngestMessageBody struct {
 	SchemaName string                 `json:"schema_name" binding:"required"`
 	ProjectId  string                 `json:"project_id"`
+	OwnerId    string                 `json:"owner_id"`
 	Data       map[string]interface{} `json:"data" binding:"required"`
 }
 type kafkaHeaderCarrier struct {
@@ -61,6 +62,7 @@ func (c *kafkaHeaderCarrier) Keys() []string {
 
 func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter, logger *logging.Logger) *gin.Engine {
 	r.POST("/ingest", func(c *gin.Context) {
+		logger.Info("Ingest handler invoked")
 		ctx := c.Request.Context()
 		tracer := otel.Tracer("streaming-ingestion")
 
@@ -82,56 +84,60 @@ func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter, logger *logging.Logger) *gin
 		if hdr := c.GetHeader("X-Project-ID"); hdr != "" {
 			msg.ProjectId = hdr
 		}
+		if hdr := c.GetHeader("X-User-ID"); hdr != "" {
+			msg.OwnerId = hdr
+		}
 
-		func() {
-			logger.WithProject(msg.ProjectId).Info("Ingesting message for schema", zap.String("schema", msg.SchemaName))
-			ctx, child := tracer.Start(ctx, "EnsureTopicExists")
-			defer child.End()
+		logger.WithProject(msg.ProjectId).Info("Ingesting message for schema",
+			zap.String("schema", msg.SchemaName),
+			zap.String("owner", msg.OwnerId))
+		ctx, child := tracer.Start(ctx, "EnsureTopicExists")
 
-			topicExists, err := kf.EnsureTopicExists(ctx, kf.TopicResolver.ResolveTopic(msg.SchemaName))
-			if err != nil {
-				child.RecordError(err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify topic"})
-				logger.WithError(err).Error("Failed to verify topic in /ingest")
-				return
-			}
-			if !topicExists {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Topic does not exist"})
-				logger.Error("Topic does not exist in /ingest", zap.String("topic", kf.TopicResolver.ResolveTopic(msg.SchemaName)))
-			}
-		}()
+		topicExists, err := kf.EnsureTopicExists(ctx, kf.TopicResolver.ResolveTopic(msg.SchemaName))
+		if err != nil {
+			child.RecordError(err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify topic"})
+			logger.WithError(err).Error("Failed to verify topic in /ingest")
+			child.End()
+			return
+		}
+		if !topicExists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Topic does not exist"})
+			logger.Error("Topic does not exist in /ingest", zap.String("topic", kf.TopicResolver.ResolveTopic(msg.SchemaName)))
+			child.End()
+			return
+		}
+		child.End()
 
-		// ★ Child span for Kafka write
-		func() {
-			ctx, child := tracer.Start(ctx, "WriteKafkaMessage")
-			defer child.End()
+		ctx, child = tracer.Start(ctx, "WriteKafkaMessage")
 
-			jsonData, _ := json.Marshal(msg)
+		jsonData, _ := json.Marshal(msg)
 
-			// Record data ingestion metrics
-			kf.Metrics.DataIngestionBytes.WithLabelValues(msg.ProjectId, "json").Add(float64(len(jsonData)))
+		// Record data ingestion metrics
+		kf.Metrics.DataIngestionBytes.WithLabelValues(msg.ProjectId, "json").Add(float64(len(jsonData)))
 
-			// Inject trace context into Kafka headers
-			headers := make([]kafka.Header, 0)
-			carrier := kafkaHeaderCarrier{headers: &headers}
-			propagator.Inject(ctx, &carrier)
+		// Inject trace context into Kafka headers
+		headers := make([]kafka.Header, 0)
+		carrier := kafkaHeaderCarrier{headers: &headers}
+		propagator.Inject(ctx, &carrier)
 
-			topic := kf.TopicResolver.ResolveTopic(msg.SchemaName)
-			err := kf.WriteMessageForSchema(ctx, msg.ProjectId, kafka.Message{
-				Key:     []byte(msg.SchemaName),
-				Value:   jsonData,
-				Headers: headers,
-			})
+		topic := kf.TopicResolver.ResolveTopic(msg.SchemaName)
+		err = kf.WriteMessageForSchema(ctx, msg.ProjectId, kafka.Message{
+			Key:     []byte(msg.SchemaName),
+			Value:   jsonData,
+			Headers: headers,
+		})
 
-			if err != nil {
-				kf.Metrics.KafkaProduceErrors.WithLabelValues(topic, "write_error").Inc()
-				child.RecordError(err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write to Kafka"})
-				return
-			} else {
-				kf.Metrics.KafkaMessagesProduced.WithLabelValues(topic).Inc()
-			}
-		}()
+		if err != nil {
+			kf.Metrics.KafkaProduceErrors.WithLabelValues(topic, "write_error").Inc()
+			child.RecordError(err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write to Kafka"})
+			child.End()
+			return
+		} else {
+			kf.Metrics.KafkaMessagesProduced.WithLabelValues(topic).Inc()
+		}
+		child.End()
 
 		c.JSON(http.StatusOK, gin.H{"status": "data received"})
 	})

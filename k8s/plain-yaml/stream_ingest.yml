@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: streaming-ingestion
-          image: razvan1y/streaming_ingestion:latest
+          image: razvan1y/streaming-ingestion:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

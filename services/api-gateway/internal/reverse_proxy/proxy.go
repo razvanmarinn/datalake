@@ -6,8 +6,6 @@ import (
 	"net/url"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
-	"github.com/razvanmarinn/api_gateway/internal/handlers"
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	pb "github.com/razvanmarinn/datalake/protobuf"
 	"go.uber.org/zap"
@@ -40,55 +38,27 @@ func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL s
 	}
 
 	return func(c *gin.Context) {
-		projectName := c.Param("project")
-		if projectName == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Project name missing in URL"})
-			logger.WithRequest(c).Error("Project name missing in URL", zap.String("url", c.Request.URL.Path))
-			return
-		}
-
-		// Verify project exists
-		exists, err := handlers.CheckProjectExists(vs, projectName)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify project existence"})
-			logger.WithRequest(c).Error("Failed to verify project existence", zap.Error(err), zap.String("project", projectName))
-			return
-		}
-		if !exists {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Project not found: " + projectName})
-			logger.WithRequest(c).Error("Project not found", zap.String("project", projectName))
-			return
-		}
-
-		// Extract user context
-		userIDIfc, exists := c.Get("userID")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing userID in context"})
-			logger.WithRequest(c).Error("Missing userID in context")
-			return
-		}
-		userID := userIDIfc.(string)
-
-		projectsIfc, exists := c.Get("projects")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing projects in token"})
-			logger.WithRequest(c).Error("Missing projects in token")
-			return
-		}
-		projects := projectsIfc.(map[string]uuid.UUID)
-		projectID, ok := projects[projectName]
+		userID, ok := c.Get("userID")
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized for project: " + projectName})
-			logger.WithRequest(c).Error("Unauthorized for project", zap.String("project", projectName))
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing userID in context"})
 			return
 		}
 
-		c.Request.Header.Set("X-User-ID", userID)
-		c.Request.Header.Set("X-Project-ID", projectID.String())
+		projectID, ok := c.Get("projectID")
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing projectID in context"})
+			return
+		}
+
+		c.Request.Header.Set("X-User-ID", userID.(string))
+		c.Request.Header.Set("X-Project-ID", projectID.(string))
 
 		otel.GetTextMapPropagator().Inject(c.Request.Context(), propagation.HeaderCarrier(c.Request.Header))
 
-		logger.WithProject(projectName).Info("Forwarding request to Streaming Ingestion", zap.String("user_id", userID), zap.String("project_id", projectID.String()), zap.String("path", c.Request.URL.Path))
+		logger.Info("Forwarding request to Streaming Ingestion",
+			zap.String("user_id", userID.(string)),
+			zap.String("project_id", projectID.(string)),
+			zap.String("path", c.Request.URL.Path))
 
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
@@ -145,8 +115,8 @@ func SchemaRegistryProxy(targetServiceURL string, logger *logging.Logger) gin.Ha
 			return
 		}
 
-		c.Request.Header.Set("X-Project-ID", userID)
-		c.Request.Header.Set("X-User-ID", projectID)
+		c.Request.Header.Set("X-Project-ID", projectID)
+		c.Request.Header.Set("X-User-ID", userID)
 
 		c.Request.URL.Path = "/schema" + originalPath
 

@@ -55,6 +55,13 @@ type Config struct {
 	OtelCollectorAddr  string
 }
 
+type IngestMessageBody struct {
+	SchemaName string                 `json:"schema_name"`
+	ProjectId  string                 `json:"project_id"`
+	OwnerId    string                 `json:"owner_id"`
+	Data       map[string]interface{} `json's:"data"`
+}
+
 // App holds the application's dependencies and state.
 type App struct {
 	config         Config
@@ -276,6 +283,13 @@ func (app *App) processMessage(ctx context.Context, m kafka.Message) {
 	logger := app.logger.With("offset", m.Offset, "key", string(m.Key))
 	logger.Info("received message %d bytes", "size", len(m.Value))
 
+	var msg IngestMessageBody
+	if err := json.Unmarshal(m.Value, &msg); err != nil {
+		logger.Error("failed to unmarshal message, sending to DLT", "error", err)
+		app.sendToDLT(ctx, m)
+		return
+	}
+
 	msgSchema, err := app.fetchSchemaWithCache(ctx, string(m.Key))
 	if err != nil {
 		logger.Error("failed to fetch schema, sending to DLT", "error", err)
@@ -290,7 +304,7 @@ func (app *App) processMessage(ctx context.Context, m kafka.Message) {
 	}
 
 	app.batcherLock.Lock()
-	app.batcher.AddMessage(m.Key, m.Value)
+	app.batcher.AddMessage(m.Key, m.Value, msg.OwnerId, msg.ProjectId)
 	size := len(app.batcher.Current.Messages)
 	app.batcherLock.Unlock()
 
@@ -349,7 +363,7 @@ func (app *App) registerFileMetadata(ctx context.Context, msgbatch *batcher.Mess
 	}
 
 	// 1. Register File with Master
-	fileReq := createFileRegistrationRequest(msgbatch, avroBytes)
+	fileReq := createFileRegistrationRequest(msgbatch, avroBytes, msgbatch.Messages[0].OwnerId, msgbatch.Messages[0].ProjectId)
 	_, err = masterClient.RegisterFile(ctx, fileReq)
 	if err != nil {
 		return fmt.Errorf("failed to register file with master: %w", err)
@@ -485,14 +499,14 @@ func initTracer(otelAddr string) (*sdktrace.TracerProvider, error) {
 	return tp, nil
 }
 
-func createFileRegistrationRequest(msgbatch *batcher.MessageBatch, data []byte) *pb.ClientFileRequestToMaster {
+func createFileRegistrationRequest(msgbatch *batcher.MessageBatch, data []byte, ownerId, projectId string) *pb.ClientFileRequestToMaster {
 	totalSize := int64(len(data))
 	fileName := fmt.Sprintf("%s_%s.avro", msgbatch.Topic, time.Now().Format("20060102150405"))
 
 	return &pb.ClientFileRequestToMaster{
 		FileName:   fileName,
-		OwnerId:    "ingestion-service",
-		ProjectId:  "default", // TODO: Implement this tomorrow
+		OwnerId:    ownerId,
+		ProjectId:  projectId,
 		FileFormat: FileFormatAvro,
 		FileSize:   totalSize,
 		BatchInfo: &pb.Batches{
