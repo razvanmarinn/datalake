@@ -55,8 +55,8 @@ github.com/pelletier/go-toml/v2 v2.2.2 h1:aYUidT7k73Pcl9nb2gScu7NSrKCSHIDE89b3+6
 github.com/pelletier/go-toml/v2 v2.2.2/go.mod h1:1t835xjRzz80PqgE6HHgN2JOsmgYu/h4qDAS4n929Rs=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/razvanmarinn/datalake v0.0.0-20251211222147-b65207e7a115 h1:/yP/xREY7s/PaseWAeLCXk3IYyG2k+uz/Y0/ycaHkAM=
-github.com/razvanmarinn/datalake v0.0.0-20251211222147-b65207e7a115/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
+github.com/razvanmarinn/datalake v0.0.0-20251211234753-dcc21b387888 h1:fiZWeZIJPvDMfHsu2QQ9tX5rQXw4QwQ4SIF2tAoJJ8Q=
+github.com/razvanmarinn/datalake v0.0.0-20251211234753-dcc21b387888/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.4.0/go.mod h1:YvHI0jy2hoMjB+UWwv71VJQ9isScKT/TqJzVSSt89Yw=
 github.com/stretchr/objx v0.5.0/go.mod h1:Yh+to48EsGEfYuaHDzXPcE3xhTkx73EhmCGUpEOglKo=

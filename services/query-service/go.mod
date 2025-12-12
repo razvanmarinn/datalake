@@ -5,7 +5,7 @@ go 1.24.11
 require (
 	github.com/gin-contrib/cors v1.7.6
 	github.com/gin-gonic/gin v1.11.0
-	github.com/razvanmarinn/datalake v0.0.0-20251211222147-b65207e7a115
+	github.com/razvanmarinn/datalake v0.0.0-20251211234753-dcc21b387888
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.64.0
 	go.opentelemetry.io/otel v1.39.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.39.0

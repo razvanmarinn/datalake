@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: master
-          image: razvan1y/master:latest
+          image: razvan1y/dfs-master:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 50055
