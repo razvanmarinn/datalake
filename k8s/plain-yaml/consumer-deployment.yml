@@ -1,39 +1,35 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ingestion-consumer-test2
-  # Optional: Specify the namespace if your consumer isn't in the 'default' namespace
+  name: ingestion-consumer
   namespace: datalake
 spec:
-  replicas: 2
+  replicas: 3
   selector:
     matchLabels:
-      app: ingestion-consumer-test2
+      app: ingestion-consumer
   template:
     metadata:
       labels:
-        app: ingestion-consumer-test2
+        app: ingestion-consumer
     spec:
       containers:
         - name: ingestion-consumer
-          # Make sure this image is accessible from your Kubernetes cluster
           image: razvan1y/ingestion:latest
           imagePullPolicy: Always
           env:
             - name: KAFKA_BROKERS
-              # Use the comma-separated list of broker DNS names from the headless service
               value: "kafka-0.kafka-headless.kafka.svc.cluster.local:9092,kafka-1.kafka-headless.kafka.svc.cluster.local:9092,kafka-2.kafka-headless.kafka.svc.cluster.local:9092"
             - name: KAFKA_TOPIC
-              value: "raw_test2" # Ensure this topic exists in your Kafka cluster
+              value: "raw_test"
             - name: KAFKA_GROUP_ID
-              value: "ingestion-consumers-test2"
+              value: "ingestion-consumers"
             - name: SCHEMA_REGISTRY_HOST
               value: "schema-registry.default.svc.cluster.local"
             - name: SCHEMA_REGISTRY_PORT
               value: "8081"
             - name: MASTER_SERVICE_PORT
               value: "50055"
-          # Add resource requests/limits for better pod scheduling
           resources:
             requests:
               memory: "256Mi"
