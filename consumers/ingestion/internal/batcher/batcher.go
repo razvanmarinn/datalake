@@ -35,6 +35,7 @@ type Message struct {
 	Value     []byte
 	OwnerId   string
 	ProjectId string
+	Data      map[string]interface{}
 }
 
 type Batcher struct {
@@ -53,9 +54,9 @@ func NewBatcher(topic string, maxMessages int) *Batcher {
 	}
 }
 
-func (b *Batcher) AddMessage(key, value []byte, ownerId, projectId string) {
+func (b *Batcher) AddMessage(key, value []byte, ownerId, projectId string, data map[string]interface{}) {
 	fmt.Printf("Adding message to batch. Current size: %d\n", b.Current.Size())
-	b.Current.AddMessage(key, value, ownerId, projectId)
+	b.Current.AddMessage(key, value, ownerId, projectId, data)
 	if b.Current.Size() >= b.MaxMessages {
 		b.Batches <- b.Current
 		b.Current = NewMessageBatch(b.Topic)
@@ -78,12 +79,13 @@ func NewMessageBatch(topic string) *MessageBatch {
 	}
 }
 
-func (mb *MessageBatch) AddMessage(key, value []byte, ownerId, projectId string) {
+func (mb *MessageBatch) AddMessage(key, value []byte, ownerId, projectId string, data map[string]interface{}) {
 	mb.Messages = append(mb.Messages, Message{
 		Key:       key,
 		Value:     value,
 		OwnerId:   ownerId,
 		ProjectId: projectId,
+		Data:      data,
 	})
 }
 
@@ -202,11 +204,7 @@ func (mb *MessageBatch) GetMessagesAsAvroBytes(schema *Schema) ([]byte, error) {
 	// 2. Convert ALL messages first
 	var records []interface{}
 	for _, msg := range mb.Messages {
-		record, err := UnmarshalMessage(schema, msg.Value)
-		if err != nil {
-			return nil, fmt.Errorf("message conversion failed: %v", err)
-		}
-		records = append(records, record)
+		records = append(records, msg.Data)
 	}
 
 	fmt.Printf("Converted %d records to Avro\n", len(records))

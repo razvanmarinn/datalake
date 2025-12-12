@@ -59,7 +59,7 @@ type IngestMessageBody struct {
 	SchemaName string                 `json:"schema_name"`
 	ProjectId  string                 `json:"project_id"`
 	OwnerId    string                 `json:"owner_id"`
-	Data       map[string]interface{} `json's:"data"`
+	Data       map[string]interface{} `json:"data"`
 }
 
 // App holds the application's dependencies and state.
@@ -297,14 +297,15 @@ func (app *App) processMessage(ctx context.Context, m kafka.Message) {
 		return
 	}
 
-	if _, err := batcher.UnmarshalMessage(msgSchema, m.Value); err != nil {
+	unmarshalledData, err := batcher.UnmarshalMessage(msgSchema, m.Value)
+	if err != nil {
 		logger.Error("failed to unmarshal message, sending to DLT", "error", err)
 		app.sendToDLT(ctx, m)
 		return
 	}
 
 	app.batcherLock.Lock()
-	app.batcher.AddMessage(m.Key, m.Value, msg.OwnerId, msg.ProjectId)
+	app.batcher.AddMessage(m.Key, m.Value, msg.OwnerId, msg.ProjectId, unmarshalledData)
 	size := len(app.batcher.Current.Messages)
 	app.batcherLock.Unlock()
 

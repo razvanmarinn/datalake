@@ -21,7 +21,7 @@ spec:
             - name: KAFKA_BROKERS
               value: "kafka-0.kafka-headless.kafka.svc.cluster.local:9092,kafka-1.kafka-headless.kafka.svc.cluster.local:9092,kafka-2.kafka-headless.kafka.svc.cluster.local:9092"
             - name: KAFKA_TOPIC
-              value: "raw_test"
+              value: "raw_test1"
             - name: KAFKA_GROUP_ID
               value: "ingestion-consumers"
             - name: SCHEMA_REGISTRY_HOST
