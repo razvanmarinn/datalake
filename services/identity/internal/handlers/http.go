@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/razvanmarinn/datalake/pkg/jwt/manager"
+	middleware "github.com/razvanmarinn/datalake/pkg/jwt/middleware"
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"github.com/razvanmarinn/identity_service/internal/db"
 	"github.com/razvanmarinn/identity_service/internal/db/models"
@@ -36,6 +37,8 @@ func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter, logger *logging.
 	}
 	r.Use(cors.New(config))
 	r.Use(logger.GinMiddleware())
+	auth := r.Group("/")
+	auth.Use(middleware.AuthMiddleware())
 
 	r.StaticFile("/.well-known/jwks.json", "./public/.well-known/jwks.json")
 
@@ -125,5 +128,50 @@ func SetupRouter(database *sql.DB, kafkaWriter *kf.KafkaWriter, logger *logging.
 		c.JSON(http.StatusOK, gin.H{"message": "Project registered successfully"})
 	})
 
+	auth.GET("/projects/by-username/:username", func(c *gin.Context) {
+		requestedUsername := c.Param("username")
+
+		// Username from JWT validated by middleware
+		authUsernameValue, exists := c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthenticated"})
+			return
+		}
+		authUsername := authUsernameValue.(string)
+
+		// Security: one user cannot fetch another user's data
+		if requestedUsername != authUsername {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
+			return
+		}
+
+		// Load projects from DB (if you want DB as source of truth)
+		projects, err := db.GetProjects(database, requestedUsername)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get projects"})
+			return
+		}
+
+		// Or: If you want to avoid querying DB and rely purely on JWT data:
+		// projectsValue, _ := c.Get("projects")
+		// projects := projectsValue.(map[string]uuid.UUID)
+
+		user, err := db.GetUser(database, requestedUsername)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user"})
+			return
+		}
+
+		if user == nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"user-id":  user.ID,
+			"username": user.Username,
+			"projects": projects,
+		})
+	})
 	return r
 }

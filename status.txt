@@ -2,3 +2,10 @@
 
 Made data catalog retrieve file list from dfs master
 still need to work on the owner id and project cause they are marked as ingestion service / .. check tomorrow
+
+
+### 13/12/2025
+
+we can see projects in data catalog, let's improve on that
+if i click on another project the same data appears ( from proj 1)
++ fix topic for kafka, right now it is a static mess.

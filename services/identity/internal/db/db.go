@@ -176,3 +176,16 @@ func GetProjects(db *sql.DB, username string) (map[string]uuid.UUID, error) {
 
 	return projects, nil
 }
+
+func GetUserByID(db *sql.DB, id uuid.UUID) (*models.Client, error) {
+    var user models.Client
+    query := `SELECT id, username, password FROM clients WHERE id=$1`
+    err := db.QueryRow(query, id).Scan(&user.ID, &user.Username, &user.Password)
+    if err == sql.ErrNoRows {
+        return nil, nil
+    }
+    if err != nil {
+        return nil, err
+    }
+    return &user, nil
+}
