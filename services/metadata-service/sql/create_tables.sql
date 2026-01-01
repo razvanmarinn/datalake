@@ -19,5 +19,5 @@ CREATE TABLE IF NOT EXISTS project (
     name VARCHAR(100) NOT NULL,
     description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
+    owner_id UUID NOT NULL
 )

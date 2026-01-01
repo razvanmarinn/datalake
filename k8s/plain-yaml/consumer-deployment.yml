@@ -19,21 +19,27 @@ spec:
           imagePullPolicy: Always
           env:
             - name: KAFKA_BROKERS
-              value: "kafka-0.kafka-headless.kafka.svc.cluster.local:9092,kafka-1.kafka-headless.kafka.svc.cluster.local:9092,kafka-2.kafka-headless.kafka.svc.cluster.local:9092"
-            - name: KAFKA_TOPIC
-              value: "raw_test1"
+              value: "my-kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092"
+            
+            - name: KAFKA_TOPIC_REGEX
+              value: "^.+\\..+"
+
             - name: KAFKA_GROUP_ID
-              value: "ingestion-consumers"
+              value: "ingestion-consumers-group"
+              
+            - name: KAFKA_DLT_TOPIC
+              value: "ingestion-dlt"
+
             - name: SCHEMA_REGISTRY_HOST
-              value: "schema-registry.default.svc.cluster.local"
-            - name: SCHEMA_REGISTRY_PORT
-              value: "8081"
-            - name: MASTER_SERVICE_PORT
-              value: "50055"
+              value: "schema-registry.datalake.svc.cluster.local:8081"
+            - name: MASTER_ADDRESS
+              value: "master.datalake.svc.cluster.local:50055"
+            - name: OTEL_COLLECTOR_ADDR
+              value: "otel-collector.observability.svc.cluster.local:4317"
           resources:
             requests:
               memory: "256Mi"
               cpu: "100m"
             limits:
               memory: "512Mi"
-              cpu: "250m"
+              cpu: "500m"
