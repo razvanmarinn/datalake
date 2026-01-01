@@ -22,7 +22,7 @@ spec:
               value: "my-kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092"
             
             - name: KAFKA_TOPIC_REGEX
-              value: "^.+\\..+"
+              value: ".*"
 
             - name: KAFKA_GROUP_ID
               value: "ingestion-consumers-group"
