@@ -75,41 +75,40 @@ deploy:
 
 
 apply-rbac:
-	kubectl apply -f ../k8s/plain-yaml/rbac/rbac.yaml
-	
+	kubectl apply -f ../k8s/plain-yaml/rbac/rbac.yaml \
+
 deploy-all:
-	apply-rbac
-	@echo "🚀 Deploying all services..."
+	make apply-rbac
+	@echo "Deploying all services..."
 	@for mapping in $(SERVICE_MAPPINGS); do \
 		service_path=$$(echo "$$mapping" | cut -d':' -f1); \
 		deploy_file=$$(echo "$$mapping" | cut -d':' -f2); \
 		deploy_name=$$(echo "$$mapping" | cut -d':' -f3); \
 		service_name=$$(basename "$$service_path"); \
 		echo ""; \
-		echo "🚀 Deploying $$deploy_name ($$service_name)..."; \
-		echo "📁 Source: $$service_path"; \
-		echo "📄 Deploy file: $$deploy_file"; \
+		echo "Deploying $$deploy_name ($$service_name)..."; \
+		echo "Source: $$service_path"; \
+		echo "Deploy file: $$deploy_file"; \
 		if [ ! -d "../$$service_path" ]; then \
-			echo "⚠️  Skipping $$deploy_name - source directory ../$$service_path not found"; \
+			echo "Skipping $$deploy_name - source directory ../$$service_path not found"; \
 			continue; \
 		fi; \
 		if [ ! -f "$(K8S_DIR)/$$deploy_file" ]; then \
-			echo "⚠️  Skipping $$deploy_name - deployment file $(K8S_DIR)/$$deploy_file not found"; \
+			echo "Skipping $$deploy_name - deployment file $(K8S_DIR)/$$deploy_file not found"; \
 			continue; \
 		fi; \
-		echo "🔨 Building Docker image for $$service_name..."; \
-		docker build -t datalake/"$$service_name":latest ../"$$service_path" || { echo "❌ Build failed for $$service_name"; continue; }; \
-		docker tag datalake/"$$service_name":latest $(REGISTRY)/"$$service_name":latest; \
-		docker push $(REGISTRY)/"$$service_name":latest || { echo "❌ Push failed for $$service_name"; continue; }; \
-		echo "☸️  Deploying $$deploy_name to Kubernetes..."; \
-		kubectl apply -f $(K8S_DIR)/"$$deploy_file" -n $(NAMESPACE) || { echo "❌ Apply failed for $$deploy_name"; continue; }; \
-		kubectl set image deployment/"$$deploy_name" "$$deploy_name"=$(REGISTRY)/"$$service_name":latest -n $(NAMESPACE) || true; \
-		kubectl rollout restart deployment/"$$deploy_name" -n $(NAMESPACE) || true; \
-		echo "✅ $$deploy_name deployed successfully!"; \
-
+		echo "Building Docker image for $$service_name..."; \
+		docker build -t datalake/$$service_name:latest ../$$service_path || { echo "Build failed for $$service_name"; continue; }; \
+		docker tag datalake/$$service_name:latest $(REGISTRY)/$$service_name:latest; \
+		docker push $(REGISTRY)/$$service_name:latest || { echo "Push failed for $$service_name"; continue; }; \
+		echo "Deploying $$deploy_name to Kubernetes..."; \
+		kubectl apply -f $(K8S_DIR)/$$deploy_file -n $(NAMESPACE) || { echo "Apply failed for $$deploy_name"; continue; }; \
+		kubectl set image deployment/$$deploy_name $$deploy_name=$(REGISTRY)/$$service_name:latest -n $(NAMESPACE) || true; \
+		kubectl rollout restart deployment/$$deploy_name -n $(NAMESPACE) || true; \
+		echo "$$deploy_name deployed successfully"; \
 	done
 	@echo ""
-	@echo "🎉 All services deployment completed!"
+	@echo "All services deployment completed"
 
 port-forward:
 	@echo "🌐 Setting up port forwards..."
