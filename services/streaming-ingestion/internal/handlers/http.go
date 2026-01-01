@@ -93,20 +93,6 @@ func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter, logger *logging.Logger) *gin
 			zap.String("owner", msg.OwnerId))
 		ctx, child := tracer.Start(ctx, "EnsureTopicExists")
 
-		topicExists, err := kf.EnsureTopicExists(ctx, kf.TopicResolver.ResolveTopic(msg.SchemaName))
-		if err != nil {
-			child.RecordError(err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify topic"})
-			logger.WithError(err).Error("Failed to verify topic in /ingest")
-			child.End()
-			return
-		}
-		if !topicExists {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Topic does not exist"})
-			logger.Error("Topic does not exist in /ingest", zap.String("topic", kf.TopicResolver.ResolveTopic(msg.SchemaName)))
-			child.End()
-			return
-		}
 		child.End()
 
 		ctx, child = tracer.Start(ctx, "WriteKafkaMessage")
@@ -122,7 +108,7 @@ func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter, logger *logging.Logger) *gin
 		propagator.Inject(ctx, &carrier)
 
 		topic := kf.TopicResolver.ResolveTopic(msg.SchemaName)
-		err = kf.WriteMessageForSchema(ctx, msg.ProjectId, kafka.Message{
+		err := kf.WriteMessageForSchema(ctx, msg.ProjectId, kafka.Message{
 			Key:     []byte(msg.SchemaName),
 			Value:   jsonData,
 			Headers: headers,

@@ -11,7 +11,7 @@ import (
 
 type KafkaWriter struct {
 	Writer        *kafka.Writer
-	TopicResolver KafkaTopicResolver
+	TopicResolver *KafkaTopicResolver // Changed to pointer for consistency
 	Brokers       []string
 	Metrics       *metrics.StreamingMetrics
 }
@@ -22,8 +22,10 @@ func NewKafkaTopicResolver() *KafkaTopicResolver {
 	return &KafkaTopicResolver{}
 }
 
+// FIX: Generate a topic name that satisfies the consumer regex "^.+\\..+"
 func (k *KafkaTopicResolver) ResolveTopic(projectName string) string {
-	return "raw_test1"
+	// Example: "datalake.project-razv"
+	return fmt.Sprintf("datalake.%s", projectName)
 }
 
 func NewKafkaWriter(brokers []string) *KafkaWriter {
@@ -31,12 +33,13 @@ func NewKafkaWriter(brokers []string) *KafkaWriter {
 		Writer: kafka.NewWriter(kafka.WriterConfig{
 			Brokers:      brokers,
 			Balancer:     &kafka.LeastBytes{},
-			Async:        false,
+			Async:        false, // Set to true for higher throughput
 			BatchSize:    10,
 			BatchTimeout: 1 * time.Second,
 			RequiredAcks: 1,
 		}),
-		Brokers: brokers,
+		TopicResolver: NewKafkaTopicResolver(), // Initialize the resolver
+		Brokers:       brokers,
 	}
 }
 
@@ -44,29 +47,14 @@ func (k *KafkaWriter) SetMetrics(metrics *metrics.StreamingMetrics) {
 	k.Metrics = metrics
 }
 
-func (k *KafkaWriter) EnsureTopicExists(ctx context.Context, topic string) (bool, error) {
-	conn, err := kafka.Dial("tcp", k.Brokers[0])
-	if err != nil {
-		return false, fmt.Errorf("failed to connect to Kafka: %w", err)
-	}
-	defer conn.Close()
-
-	partitions, err := conn.ReadPartitions(topic)
-	if err == nil && len(partitions) > 0 {
-		return true, nil // Topic already exists
-	}
-	return false, nil
-}
-
 func (k *KafkaWriter) WriteMessageForSchema(ctx context.Context, projectName string, message kafka.Message) error {
 	topic := k.TopicResolver.ResolveTopic(projectName)
 
-	topicMessage := message
-	topicMessage.Topic = topic
+	message.Topic = topic
 
 	if k.Metrics != nil {
-		k.Metrics.KafkaMessagesBatchSize.WithLabelValues(topic).Observe(1) // Single message batch
+		k.Metrics.KafkaMessagesBatchSize.WithLabelValues(topic).Observe(1)
 	}
 
-	return k.Writer.WriteMessages(ctx, topicMessage)
+	return k.Writer.WriteMessages(ctx, message)
 }
