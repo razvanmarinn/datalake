@@ -1,64 +1,15 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: metadata-service
-  namespace: datalake
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: metadata-service
-  template:
-    metadata:
-      labels:
-        app: metadata-service
-    spec:
-      containers:
-        - name: metadata-service
-          image: razvan1y/metadata-service:latest
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 8082
-            - containerPort: 50056
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: metadata-service
-spec:
-  type: ClusterIP
-  ports:
-    - name: http
-      port: 8082
-      targetPort: 8082
-    - name: grpc
-      port: 50055
-      targetPort: 50056
-  selector:
-    app: metadata-service
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: metadata-postgres-secret
-  namespace: datalake
-type: Opaque
-data:
-  postgres-password: aWRlbnRpdHlwYXNzd29yZA== # base64 for "metadatapassword"
-  postgres-user: aWRlbnRpdHl1c2Vy # base64 for "metadatauser"
----
+# --- Database Storage ---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: metadata-postgres-pv
-  namespace: datalake
 spec:
   capacity:
     storage: 1Gi
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: standard # <-- ADDED THIS LINE
+  storageClassName: standard
   hostPath:
     path: /data/metadata-postgres
 ---
@@ -73,9 +24,21 @@ spec:
   resources:
     requests:
       storage: 1Gi
-  storageClassName: standard # <-- ADDED THIS LINE
+  storageClassName: standard
   volumeName: metadata-postgres-pv
 ---
+# --- Database Secrets ---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: metadata-postgres-secret
+  namespace: datalake
+type: Opaque
+data:
+  postgres-password: aWRlbnRpdHlwYXNzd29yZA== # metadatapassword
+  postgres-user: aWRlbnRpdHl1c2Vy # metadatauser
+---
+# --- Database Deployment ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -107,8 +70,6 @@ spec:
                 secretKeyRef:
                   name: metadata-postgres-secret
                   key: postgres-user
-            - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
           volumeMounts:
             - name: metadata-postgres-storage
               mountPath: /var/lib/postgresql/data
@@ -123,39 +84,61 @@ metadata:
   name: metadata-postgres
   namespace: datalake
 spec:
-  type: ClusterIP
   ports:
     - port: 5432
-      targetPort: 5432
   selector:
     app: metadata-postgres
 ---
+# --- Metadata Application ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metadata-service
+  namespace: datalake
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metadata-service
+  template:
+    metadata:
+      labels:
+        app: metadata-service
+    spec:
+      serviceAccountName: metadata-service-sa
+      containers:
+        - name: metadata-service
+          image: razvan1y/metadata-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8081
+            - containerPort: 50056
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "my-kafka-cluster-kafka-bootstrap.kafka.svc:9092"
+            - name: IDENTITY_SERVICE_ADDR
+              value: "identity-service.datalake.svc:50055"
+            - name: DB_HOST
+              value: "metadata-postgres"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef: { name: metadata-postgres-secret, key: postgres-user }
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: metadata-postgres-secret, key: postgres-password }
+---
 apiVersion: v1
-kind: ServiceAccount
+kind: Service
 metadata:
-  name: metadata-service-sa
+  name: metadata-service
   namespace: datalake
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  namespace: kafka # The namespace where Strimzi looks for topics
-  name: kafka-topic-creator
-rules:
-- apiGroups: ["kafka.strimzi.io"]
-  resources: ["kafkatopics"]
-  verbs: ["get", "list", "create", "update", "patch", "delete"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: metadata-service-bind
-  namespace: kafka
-subjects:
-- kind: ServiceAccount
-  name: metadata-service-sa
-  namespace: datalake
-roleRef:
-  kind: Role
-  name: kafka-topic-creator
-  apiGroup: rbac.authorization.k8s.io
+spec:
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081
+    - name: grpc
+      port: 50055
+      targetPort: 50056
+  selector:
+    app: metadata-service

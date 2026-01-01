@@ -1,4 +1,4 @@
-FROM golang:1.23.4 AS builder
+FROM golang:1.25.0 AS builder
 WORKDIR /app
 
 COPY . .
@@ -10,7 +10,7 @@ FROM alpine:latest
 
 
 COPY --from=builder /app/ .
-
+COPY --from=builder /app/sql ./sql
 
 RUN chmod +x metadata-service
 EXPOSE 8080

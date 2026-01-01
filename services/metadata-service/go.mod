@@ -7,15 +7,13 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
 	github.com/linkedin/goavro/v2 v2.13.1
-	github.com/razvanmarinn/datalake v0.0.0-00010101000000-000000000000
+	github.com/razvanmarinn/datalake v0.0.0-20260101171605-98329bb7bc60
 	github.com/segmentio/kafka-go v0.4.49
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.72.2
 	k8s.io/apimachinery v0.35.0
 	k8s.io/client-go v0.35.0
 )
-
-replace github.com/razvanmarinn/datalake => ../../
 
 require (
 	github.com/MicahParks/jwkset v0.11.0 // indirect

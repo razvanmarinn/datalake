@@ -10,7 +10,7 @@ SERVICE_MAPPINGS = \
 	services/api-gateway:api_gateway.yaml:api-gateway \
 	services/data-catalog:data-catalog-deployment.yaml:data-catalog \
 	services/identity:identity-service.yaml:identity-service \
-	services/schema-registry:schema_registry.yaml:schema-registry \
+	services/metadata-service:metadata-deployment.yml:metadata-service \
 	services/streaming-ingestion:stream_ingest.yml:streaming-ingestion\
 	services/query-service:query-service.yml:query-service
 
@@ -74,7 +74,10 @@ deploy:
 	@echo "✅ $(SERVICE) deployed successfully!"
 
 
+apply-rbac:
+	kubectl apply -f ../k8s/plain-yaml/rbac/rbac.yaml
 deploy-all:
+	apply-rbac
 	@echo "🚀 Deploying all services..."
 	@for mapping in $(SERVICE_MAPPINGS); do \
 		service_path=$$(echo "$$mapping" | cut -d':' -f1); \
@@ -102,6 +105,7 @@ deploy-all:
 		kubectl set image deployment/"$$deploy_name" "$$deploy_name"=$(REGISTRY)/"$$service_name":latest -n $(NAMESPACE) || true; \
 		kubectl rollout restart deployment/"$$deploy_name" -n $(NAMESPACE) || true; \
 		echo "✅ $$deploy_name deployed successfully!"; \
+
 	done
 	@echo ""
 	@echo "🎉 All services deployment completed!"
@@ -111,7 +115,7 @@ port-forward:
 	kubectl port-forward -n datalake svc/api-gateway 8083:80 > /dev/null 2>&1 &
 	kubectl port-forward -n observability svc/jaeger-query 16686:16686 > /dev/null 2>&1 &
 	kubectl port-forward -n datalake svc/identity-service 8082:8082 > /dev/null 2>&1 &
-	kubectl port-forward -n datalake svc/schema-registry 8081:8081 > /dev/null 2>&1 &
+	kubectl port-forward -n datalake svc/metadata-service 8081:8081 > /dev/null 2>&1 &
 	kubectl port-forward svc/prometheus 9090:9090 -n observability > /dev/null 2>&1 &
 	kubectl port-forward svc/grafana 3000:3000 -n observability > /dev/null 2>&1 &
 	kubectl port-forward svc/alertmanager 9093:9093 -n observability > /dev/null 2>&1 &
@@ -120,7 +124,7 @@ port-forward:
 	@echo "✅ Port forwards started:"
 	@echo "  - API Gateway:     http://localhost:8083"
 	@echo "  - Identity Service: http://localhost:8082"
-	@echo "  - Schema Registry:  http://localhost:8081"
+	@echo "  - Metadata Service:  http://localhost:8081"
 	@echo "  - Prometheus:      http://localhost:9090"
 	@echo "  - Grafana:         http://localhost:3000"
 	@echo "  - Jaeger:          http://localhost:16686"

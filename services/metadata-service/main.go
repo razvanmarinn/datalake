@@ -27,7 +27,7 @@ func main() {
 		logger.Error("K8s Provisioner disabled (check if running inside K8s)", zap.Error(err))
 	}
 
-	conn, err := grpc.Dial("identity-service:50051", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial("identity-service:50056", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		logger.Fatal("Failed to connect to Identity gRPC service", zap.Error(err))
 	}
@@ -41,8 +41,8 @@ func main() {
 	metrics.SetupMetricsEndpoint(r)
 	r.Use(serviceMetrics.PrometheusMiddleware())
 
-	logger.Info("Starting Metadata Service on :8080")
-	if err := r.Run(":8080"); err != nil {
+	logger.Info("Starting Metadata Service on :8081")
+	if err := r.Run(":8081"); err != nil {
 		logger.Fatal("Router failed", zap.Error(err))
 	}
 }
