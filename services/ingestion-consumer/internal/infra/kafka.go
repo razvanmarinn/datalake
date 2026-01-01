@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -33,6 +34,9 @@ func DiscoverTopics(brokers []string, pattern string) ([]string, error) {
 	}
 
 	for _, p := range partitions {
+		if strings.HasPrefix(p.Topic, "__") {
+			continue
+		}
 		if matcher.MatchString(p.Topic) {
 			topicMap[p.Topic] = struct{}{}
 		}
