@@ -25,18 +25,6 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		c.Set("userID", claims.UserID)
 
-		projectID := c.Query("project_id")
-		if projectID == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing project_id query parameter"})
-			return
-		}
-
-		if _, ok := claims.Projects[projectID]; !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid project_id"})
-			return
-		}
-		c.Set("projectID", projectID)
-
 		c.Next()
 	}
 }
