@@ -10,6 +10,9 @@
   kubectl create ns kafka
   kubectl create ns argocd
   kubectl create ns datalake
+  kubectl config set-context --current --namespace=datalake
+  kubectl create -f 'https://strimzi.io/install/latest?namespace=kafka' -n kafka
+
   if [ "$1" == "rebuild-images=true" ]; then
     make
     sleep 10

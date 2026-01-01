@@ -11,7 +11,7 @@ SERVICE_MAPPINGS = \
 	services/data-catalog:data-catalog-deployment.yaml:data-catalog \
 	services/identity:identity-service.yaml:identity-service \
 	services/metadata-service:metadata-deployment.yml:metadata-service \
-	services/streaming-ingestion:stream_ingest.yml:streaming-ingestion\
+	services/streaming-ingestion:stream_ingest.yml:streaming-ingestion \
 	services/query-service:query-service.yml:query-service
 
 export DOCKER_BUILDKIT=1
