@@ -19,7 +19,7 @@ spec:
           imagePullPolicy: Always
           env:
             - name: KAFKA_BROKERS
-              value: "my-kafka-cluster-kafka-bootstrap.kafka.svc.cluster.local:9092"
+              value: "my-kafka-cluster-kafka-plain-bootstrap.kafka.svc.cluster.local:9092"
             
             - name: KAFKA_TOPIC_REGEX
               value: ".*"
