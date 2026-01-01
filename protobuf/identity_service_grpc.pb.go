@@ -19,139 +19,101 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	VerificationService_VerifyIdentity_FullMethodName         = "/identity_service.VerificationService/VerifyIdentity"
-	VerificationService_VerifyProjectExistence_FullMethodName = "/identity_service.VerificationService/VerifyProjectExistence"
+	IdentityService_GetUserInfo_FullMethodName = "/identity_service.IdentityService/GetUserInfo"
 )
 
-// VerificationServiceClient is the client API for VerificationService service.
+// IdentityServiceClient is the client API for IdentityService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type VerificationServiceClient interface {
-	VerifyIdentity(ctx context.Context, in *VerifyIdentityRequest, opts ...grpc.CallOption) (*VerifyIdentityResponse, error)
-	VerifyProjectExistence(ctx context.Context, in *VerifyProjectExistenceRequest, opts ...grpc.CallOption) (*VerifyProjectExistenceResponse, error)
+type IdentityServiceClient interface {
+	GetUserInfo(ctx context.Context, in *GetUserInfoRequest, opts ...grpc.CallOption) (*GetUserInfoResponse, error)
 }
 
-type verificationServiceClient struct {
+type identityServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewVerificationServiceClient(cc grpc.ClientConnInterface) VerificationServiceClient {
-	return &verificationServiceClient{cc}
+func NewIdentityServiceClient(cc grpc.ClientConnInterface) IdentityServiceClient {
+	return &identityServiceClient{cc}
 }
 
-func (c *verificationServiceClient) VerifyIdentity(ctx context.Context, in *VerifyIdentityRequest, opts ...grpc.CallOption) (*VerifyIdentityResponse, error) {
+func (c *identityServiceClient) GetUserInfo(ctx context.Context, in *GetUserInfoRequest, opts ...grpc.CallOption) (*GetUserInfoResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(VerifyIdentityResponse)
-	err := c.cc.Invoke(ctx, VerificationService_VerifyIdentity_FullMethodName, in, out, cOpts...)
+	out := new(GetUserInfoResponse)
+	err := c.cc.Invoke(ctx, IdentityService_GetUserInfo_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *verificationServiceClient) VerifyProjectExistence(ctx context.Context, in *VerifyProjectExistenceRequest, opts ...grpc.CallOption) (*VerifyProjectExistenceResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(VerifyProjectExistenceResponse)
-	err := c.cc.Invoke(ctx, VerificationService_VerifyProjectExistence_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-// VerificationServiceServer is the server API for VerificationService service.
-// All implementations must embed UnimplementedVerificationServiceServer
+// IdentityServiceServer is the server API for IdentityService service.
+// All implementations must embed UnimplementedIdentityServiceServer
 // for forward compatibility.
-type VerificationServiceServer interface {
-	VerifyIdentity(context.Context, *VerifyIdentityRequest) (*VerifyIdentityResponse, error)
-	VerifyProjectExistence(context.Context, *VerifyProjectExistenceRequest) (*VerifyProjectExistenceResponse, error)
-	mustEmbedUnimplementedVerificationServiceServer()
+type IdentityServiceServer interface {
+	GetUserInfo(context.Context, *GetUserInfoRequest) (*GetUserInfoResponse, error)
+	mustEmbedUnimplementedIdentityServiceServer()
 }
 
-// UnimplementedVerificationServiceServer must be embedded to have
+// UnimplementedIdentityServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedVerificationServiceServer struct{}
+type UnimplementedIdentityServiceServer struct{}
 
-func (UnimplementedVerificationServiceServer) VerifyIdentity(context.Context, *VerifyIdentityRequest) (*VerifyIdentityResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method VerifyIdentity not implemented")
+func (UnimplementedIdentityServiceServer) GetUserInfo(context.Context, *GetUserInfoRequest) (*GetUserInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetUserInfo not implemented")
 }
-func (UnimplementedVerificationServiceServer) VerifyProjectExistence(context.Context, *VerifyProjectExistenceRequest) (*VerifyProjectExistenceResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method VerifyProjectExistence not implemented")
-}
-func (UnimplementedVerificationServiceServer) mustEmbedUnimplementedVerificationServiceServer() {}
-func (UnimplementedVerificationServiceServer) testEmbeddedByValue()                             {}
+func (UnimplementedIdentityServiceServer) mustEmbedUnimplementedIdentityServiceServer() {}
+func (UnimplementedIdentityServiceServer) testEmbeddedByValue()                         {}
 
-// UnsafeVerificationServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to VerificationServiceServer will
+// UnsafeIdentityServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to IdentityServiceServer will
 // result in compilation errors.
-type UnsafeVerificationServiceServer interface {
-	mustEmbedUnimplementedVerificationServiceServer()
+type UnsafeIdentityServiceServer interface {
+	mustEmbedUnimplementedIdentityServiceServer()
 }
 
-func RegisterVerificationServiceServer(s grpc.ServiceRegistrar, srv VerificationServiceServer) {
-	// If the following call pancis, it indicates UnimplementedVerificationServiceServer was
+func RegisterIdentityServiceServer(s grpc.ServiceRegistrar, srv IdentityServiceServer) {
+	// If the following call pancis, it indicates UnimplementedIdentityServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&VerificationService_ServiceDesc, srv)
+	s.RegisterService(&IdentityService_ServiceDesc, srv)
 }
 
-func _VerificationService_VerifyIdentity_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(VerifyIdentityRequest)
+func _IdentityService_GetUserInfo_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUserInfoRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(VerificationServiceServer).VerifyIdentity(ctx, in)
+		return srv.(IdentityServiceServer).GetUserInfo(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: VerificationService_VerifyIdentity_FullMethodName,
+		FullMethod: IdentityService_GetUserInfo_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VerificationServiceServer).VerifyIdentity(ctx, req.(*VerifyIdentityRequest))
+		return srv.(IdentityServiceServer).GetUserInfo(ctx, req.(*GetUserInfoRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _VerificationService_VerifyProjectExistence_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(VerifyProjectExistenceRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(VerificationServiceServer).VerifyProjectExistence(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: VerificationService_VerifyProjectExistence_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(VerificationServiceServer).VerifyProjectExistence(ctx, req.(*VerifyProjectExistenceRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-// VerificationService_ServiceDesc is the grpc.ServiceDesc for VerificationService service.
+// IdentityService_ServiceDesc is the grpc.ServiceDesc for IdentityService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var VerificationService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "identity_service.VerificationService",
-	HandlerType: (*VerificationServiceServer)(nil),
+var IdentityService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "identity_service.IdentityService",
+	HandlerType: (*IdentityServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "VerifyIdentity",
-			Handler:    _VerificationService_VerifyIdentity_Handler,
-		},
-		{
-			MethodName: "VerifyProjectExistence",
-			Handler:    _VerificationService_VerifyProjectExistence_Handler,
+			MethodName: "GetUserInfo",
+			Handler:    _IdentityService_GetUserInfo_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

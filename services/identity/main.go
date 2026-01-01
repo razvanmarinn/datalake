@@ -5,16 +5,14 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"github.com/razvanmarinn/datalake/pkg/metrics"
 	pb "github.com/razvanmarinn/datalake/protobuf"
-	"github.com/razvanmarinn/identity_service/internal/db"
-	"github.com/razvanmarinn/identity_service/internal/handlers"
-	kf "github.com/razvanmarinn/identity_service/internal/kafka"
+	"github.com/razvanmarinn/identity-service/internal/db"
+	"github.com/razvanmarinn/identity-service/internal/handlers"
 	"google.golang.org/grpc"
 )
 
@@ -36,7 +34,7 @@ func main() {
 	defer database.Close()
 
 	s := grpc.NewServer()
-	pb.RegisterVerificationServiceServer(s, &handlers.GRPCServer{
+	pb.RegisterIdentityServiceServer(s, &handlers.GRPCServer{
 		DB:     database,
 		Logger: logger,
 	})
@@ -57,18 +55,10 @@ func main() {
 		}
 	}()
 
-	kafkaBrokersStr := os.Getenv("KAFKA_BROKERS")
-	if kafkaBrokersStr == "" {
-		logger.Warn("KAFKA_BROKERS environment variable not set, using default")
-		kafkaBrokersStr = "localhost:9092"
-	}
-	kafkaBrokers := strings.Split(kafkaBrokersStr, ",")
-	kafkaWriter := kf.NewKafkaWriter(kafkaBrokers)
-
 	// Initialize metrics
 	serviceMetrics := metrics.NewServiceMetrics("identity-service")
 
-	r := handlers.SetupRouter(database, kafkaWriter, logger)
+	r := handlers.SetupRouter(database, logger)
 	// Setup metrics endpoint
 	metrics.SetupMetricsEndpoint(r)
 

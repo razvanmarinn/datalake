@@ -1,0 +1,161 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metadata-service
+  namespace: datalake
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metadata-service
+  template:
+    metadata:
+      labels:
+        app: metadata-service
+    spec:
+      containers:
+        - name: metadata-service
+          image: razvan1y/metadata-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8082
+            - containerPort: 50056
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metadata-service
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8082
+      targetPort: 8082
+    - name: grpc
+      port: 50055
+      targetPort: 50056
+  selector:
+    app: metadata-service
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: metadata-postgres-secret
+  namespace: datalake
+type: Opaque
+data:
+  postgres-password: aWRlbnRpdHlwYXNzd29yZA== # base64 for "metadatapassword"
+  postgres-user: aWRlbnRpdHl1c2Vy # base64 for "metadatauser"
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: metadata-postgres-pv
+  namespace: datalake
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard # <-- ADDED THIS LINE
+  hostPath:
+    path: /data/metadata-postgres
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: metadata-postgres-pvc
+  namespace: datalake
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard # <-- ADDED THIS LINE
+  volumeName: metadata-postgres-pv
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metadata-postgres
+  namespace: datalake
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metadata-postgres
+  template:
+    metadata:
+      labels:
+        app: metadata-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:13
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: metadata-postgres-secret
+                  key: postgres-password
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: metadata-postgres-secret
+                  key: postgres-user
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: metadata-postgres-storage
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: metadata-postgres-storage
+          persistentVolumeClaim:
+            claimName: metadata-postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: metadata-postgres
+  namespace: datalake
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+  selector:
+    app: metadata-postgres
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: metadata-service-sa
+  namespace: your-app-namespace
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: kafka # The namespace where Strimzi looks for topics
+  name: kafka-topic-creator
+rules:
+- apiGroups: ["kafka.strimzi.io"]
+  resources: ["kafkatopics"]
+  verbs: ["get", "list", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: metadata-service-bind
+  namespace: kafka
+subjects:
+- kind: ServiceAccount
+  name: metadata-service-sa
+  namespace: your-app-namespace
+roleRef:
+  kind: Role
+  name: kafka-topic-creator
+  apiGroup: rbac.authorization.k8s.io

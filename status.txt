@@ -9,3 +9,13 @@ still need to work on the owner id and project cause they are marked as ingestio
 we can see projects in data catalog, let's improve on that
 if i click on another project the same data appears ( from proj 1)
 + fix topic for kafka, right now it is a static mess.
+
+
+
+## 17/12/2025
+
+still needs to do that but got the idea
+user comes and register project -> kafka topic and a consumer are created specially for that project ( or schema) 
+to acheive this we need a CRD for k8s and to do some logic.
+evolve the schema registry into a metadata service 
+need to clean things out a bit and after we achieve that I would want to implement Trino to read data from our datalake.

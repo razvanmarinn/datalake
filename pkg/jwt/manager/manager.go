@@ -22,20 +22,15 @@ type Claims struct {
 var embeddedPrivateKey []byte
 var keyId string = "19c92999ceb1b952d80c6f90"
 
-func CreateToken(username string, projects map[string]uuid.UUID) (string, error) {
+func CreateToken(username string) (string, error) {
 	secretKey, err := jwt.ParseRSAPrivateKeyFromPEM(embeddedPrivateKey)
 	if err != nil {
 		return "", err
 	}
 
-	if projects == nil {
-		projects = make(map[string]uuid.UUID)
-	}
-
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256,
 		jwt.MapClaims{
 			"username": username,
-			"projects": projects,
 			"exp":      time.Now().Add(time.Hour * 24).Unix(),
 		})
 
@@ -67,25 +62,9 @@ func ParseToken(tokenStr string) (Claims, error) {
 		log.Fatalf("Failed to cast the claims to jwt.MapClaims.\nError: %s", err)
 	}
 	log.Printf("Parsed claims: %v", claims)
-	rawProjects, ok := claims["projects"].(map[string]interface{})
-	if !ok {
-		log.Fatalf("Failed to parse 'projects' from claims")
-	}
-	projects := make(map[string]uuid.UUID)
-	for k, v := range rawProjects {
-		s, ok := v.(string)
-		if !ok {
-			log.Fatalf("Project ID is not a string: %v", v)
-		}
-		id, err := uuid.Parse(s)
-		if err != nil {
-			log.Fatalf("Invalid UUID format in project: %v", err)
-		}
-		projects[k] = id
-	}
+
 
 	return Claims{
 		UserID:   claims["username"].(string),
-		Projects: projects,
 	}, nil
 }

@@ -1,0 +1,17 @@
+
+
+syntax = "proto3";
+package metadata_service;
+
+option go_package = "github.com/razvanmarinn/datalake/protobuf";
+
+service MetadataService {
+    rpc VerifyProjectExistence(VerifyProjectExistenceRequest) returns (VerifyProjectExistenceResponse) {}
+}
+
+message VerifyProjectExistenceRequest {
+    string project_name = 1;
+}
+message VerifyProjectExistenceResponse {
+    bool exists = 1;
+}

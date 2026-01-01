@@ -5,7 +5,7 @@ import (
 
 	"github.com/linkedin/goavro/v2"
 
-	"github.com/razvanmarinn/schema-registry/internal/models"
+	"github.com/razvanmarinn/metadata-service/internal/models"
 )
 
 func generateAvroSchema(schemaName string, fields []models.Field) (string, error) {

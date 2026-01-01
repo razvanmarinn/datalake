@@ -64,7 +64,7 @@ func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL s
 	}
 }
 
-func SchemaRegistryProxy(targetServiceURL string, logger *logging.Logger) gin.HandlerFunc {
+func MetadataServiceyProxy(targetServiceURL string, logger *logging.Logger) gin.HandlerFunc {
 
 	target, err := url.Parse(targetServiceURL)
 	if err != nil {
@@ -87,7 +87,6 @@ func SchemaRegistryProxy(targetServiceURL string, logger *logging.Logger) gin.Ha
 
 	return func(c *gin.Context) {
 
-		projectName := c.Param("project") // You can get the project name here
 		logger.WithRequest(c).Info("Forwarding schema request to Schema Registry", zap.String("path", c.Request.URL.Path))
 
 		originalPath := c.Param("path") // Get the wildcard path part
@@ -100,28 +99,13 @@ func SchemaRegistryProxy(targetServiceURL string, logger *logging.Logger) gin.Ha
 		}
 		userID := userIDIfc.(string)
 
-		projectsIfc, exists := c.Get("projects")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing projects in token"})
-			logger.WithRequest(c).Error("Missing projects in token")
-			return
-		}
-		projects := projectsIfc.(map[string]string)
+	
 
-		projectID, ok := projects[projectName]
-		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized for project: " + projectName})
-			logger.WithRequest(c).Error("Unauthorized for project", zap.String("project", projectName))
-			return
-		}
-
-		c.Request.Header.Set("X-Project-ID", projectID)
 		c.Request.Header.Set("X-User-ID", userID)
 
 		c.Request.URL.Path = "/schema" + originalPath
 
 		proxy.ServeHTTP(c.Writer, c.Request)
-		logger.WithProject(projectName).Info("Request forwarded to Schema Registry", zap.String("user_id", userID), zap.String("project_id", projectID), zap.String("path", c.Request.URL.Path))
 	}
 }
 

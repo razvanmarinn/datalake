@@ -8,7 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/razvanmarinn/datalake/pkg/logging"
-	"github.com/razvanmarinn/identity_service/internal/db/models"
+	"github.com/razvanmarinn/identity-service/internal/db/models"
 
 	_ "github.com/lib/pq"
 )
@@ -110,25 +110,6 @@ func RegisterUser(db *sql.DB, user *models.Client) error {
 	return nil
 }
 
-func RegisterProject(db *sql.DB, project *models.Project) error {
-	query := `INSERT INTO project (name, description, owner_id) VALUES ($1, $2, $3)`
-	_, err := db.Exec(query, project.Name, project.Description, project.OwnerID)
-	if err != nil {
-		return fmt.Errorf("error inserting project: %v", err)
-	}
-	return nil
-}
-
-func CheckProjectExistence(db *sql.DB, projectName string) (bool, error) {
-	query := `SELECT EXISTS(SELECT 1 FROM project WHERE name = $1)`
-	var exists bool
-	err := db.QueryRow(query, projectName).Scan(&exists)
-	if err != nil {
-		return false, fmt.Errorf("error checking project existence: %v", err)
-	}
-	return exists, nil
-}
-
 func GetUser(db *sql.DB, username string) (*models.Client, error) {
 	query := `SELECT id, username, email, password FROM users WHERE username = $1`
 	row := db.QueryRow(query, username)
@@ -143,49 +124,16 @@ func GetUser(db *sql.DB, username string) (*models.Client, error) {
 	}
 	return &user, nil
 }
-func GetProjects(db *sql.DB, username string) (map[string]uuid.UUID, error) {
-	query := `SELECT p.name, p.owner_id FROM project p
-			  JOIN users u ON p.owner_id = u.id
-			  WHERE u.username = $1`
-
-	rows, err := db.Query(query, username)
-	if err != nil {
-		return nil, fmt.Errorf("error querying projects: %v", err)
-	}
-	defer rows.Close()
-
-	projects := make(map[string]uuid.UUID)
-	for rows.Next() {
-		var name string
-		var idStr string
-		if err := rows.Scan(&name, &idStr); err != nil {
-			return nil, fmt.Errorf("error scanning project: %v", err)
-		}
-
-		id, err := uuid.Parse(idStr)
-		if err != nil {
-			return nil, fmt.Errorf("invalid UUID format for project owner_id: %v", err)
-		}
-
-		projects[name] = id
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error iterating over projects: %v", err)
-	}
-
-	return projects, nil
-}
 
 func GetUserByID(db *sql.DB, id uuid.UUID) (*models.Client, error) {
-    var user models.Client
-    query := `SELECT id, username, password FROM clients WHERE id=$1`
-    err := db.QueryRow(query, id).Scan(&user.ID, &user.Username, &user.Password)
-    if err == sql.ErrNoRows {
-        return nil, nil
-    }
-    if err != nil {
-        return nil, err
-    }
-    return &user, nil
+	var user models.Client
+	query := `SELECT id, username, password FROM clients WHERE id=$1`
+	err := db.QueryRow(query, id).Scan(&user.ID, &user.Username, &user.Password)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
 }

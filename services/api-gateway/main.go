@@ -47,7 +47,6 @@ func initTracer(ctx context.Context, logger *logging.Logger) func(context.Contex
 	)
 	otel.SetTracerProvider(tp)
 
-	// ADD THIS: Configure trace propagation
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
 		propagation.Baggage{},
@@ -84,8 +83,7 @@ func main() {
 	r.Use(middleware.AuthMiddleware())
 
 	r.Any("/ingest/", reverse_proxy.StreamingIngestionProxy(vs, "http://streaming-ingestion:8080", logger))
-	r.Any("/schema_registry/:project/*path", reverse_proxy.SchemaRegistryProxy("http://schema-registry:8080", logger))
-	// r.GET("/files/:project/metadata", reverse_proxy.SchemaRegistryProxy())
+	r.Any("/schema_registry/:project/*path", reverse_proxy.MetadataServiceyProxy("http://metadata-service:8080", logger))
 
 	srv := &http.Server{
 		Addr:    ":8080",

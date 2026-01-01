@@ -3,7 +3,7 @@ WORKDIR /app
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o schema_registry . 
+RUN CGO_ENABLED=0 GOOS=linux go build -o metadata-service . 
 RUN ls -l 
 
 FROM alpine:latest
@@ -12,6 +12,6 @@ FROM alpine:latest
 COPY --from=builder /app/ .
 
 
-RUN chmod +x schema_registry
+RUN chmod +x metadata-service
 EXPOSE 8080
-CMD ["./schema_registry"]
+CMD ["./metadata-service"]
