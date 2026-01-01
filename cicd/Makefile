@@ -16,7 +16,7 @@ SERVICE_MAPPINGS = \
 
 export DOCKER_BUILDKIT=1
 
-.PHONY: all docker-env docker-login deploy deploy-all port-forward rollout rollout-all list-services help status clean-ports
+.PHONY: all apply-rbac docker-env docker-login deploy deploy-all port-forward rollout rollout-all list-services help status clean-ports
 
 all: docker-env
 # DOCKER
@@ -76,6 +76,7 @@ deploy:
 
 apply-rbac:
 	kubectl apply -f ../k8s/plain-yaml/rbac/rbac.yaml
+	
 deploy-all:
 	apply-rbac
 	@echo "🚀 Deploying all services..."
