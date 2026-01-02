@@ -31,7 +31,7 @@ spec:
               value: "ingestion-dlt"
 
             - name: SCHEMA_REGISTRY_HOST
-              value: "schema-registry.datalake.svc.cluster.local:8081"
+              value: "metadata-service.datalake.svc.cluster.local:8081"
             - name: MASTER_ADDRESS
               value: "master.datalake.svc.cluster.local:50055"
             - name: OTEL_COLLECTOR_ADDR

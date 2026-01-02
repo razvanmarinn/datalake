@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/razvanmarinn/ingestion_consumer/internal/batcher"
-	"github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -20,34 +20,47 @@ type IngestMessageBody struct {
 	Data       map[string]interface{} `json:"data"`
 }
 
+/*
+processMessage now consumes *kafka.Message from confluent-kafka-go
+*/
 func (app *App) processMessage(ctx context.Context, m kafka.Message) {
-	// Propagate Context
-	_ = propagation.MapCarrier{} // Adapt to map if needed or use custom carrier
-	// Note: You need the custom KafkaHeaderCarrier struct here or in a utils file
+	// ---- OpenTelemetry context extraction (Kafka headers) ----
+	carrier := kafkaHeaderCarrier(m.Headers)
+	ctx = propagation.TraceContext{}.Extract(ctx, carrier)
 
-	ctx, span := app.Tracer.Start(ctx, "ProcessKafkaMessage", trace.WithSpanKind(trace.SpanKindConsumer))
+	ctx, span := app.Tracer.Start(
+		ctx,
+		"ProcessKafkaMessage",
+		trace.WithSpanKind(trace.SpanKindConsumer),
+	)
 	defer span.End()
 
 	var msg IngestMessageBody
 	if err := json.Unmarshal(m.Value, &msg); err != nil {
-		app.sendToDLT(ctx, m, err)
+		app.sendToDLT(m, err)
 		return
 	}
 
 	schema, err := app.fetchSchema(ctx, string(m.Key))
 	if err != nil {
-		app.sendToDLT(ctx, m, err)
+		app.sendToDLT(m, err)
 		return
 	}
 
 	data, err := batcher.UnmarshalMessage(schema, m.Value)
 	if err != nil {
-		app.sendToDLT(ctx, m, err)
+		app.sendToDLT(m, err)
 		return
 	}
 
 	app.BatcherLock.Lock()
-	app.Batcher.AddMessage(m.Key, m.Value, msg.OwnerId, msg.ProjectId, data)
+	app.Batcher.AddMessage(
+		m.Key,
+		m.Value,
+		msg.OwnerId,
+		msg.ProjectId,
+		data,
+	)
 	size := len(app.Batcher.Current.Messages)
 	app.BatcherLock.Unlock()
 
@@ -61,8 +74,17 @@ func (app *App) fetchSchema(ctx context.Context, key string) (*batcher.Schema, e
 		return s, nil
 	}
 
-	url := fmt.Sprintf("http://%s/%s/schema/%s", app.Config.SchemaRegistryHost, app.Config.SchemaProjectName, key)
-	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	url := fmt.Sprintf(
+		"http://%s/%s/schema/%s",
+		app.Config.SchemaRegistryHost,
+		app.Config.SchemaProjectName,
+		key,
+	)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
 
 	resp, err := app.HttpClient.Do(req)
 	if err != nil {
@@ -70,27 +92,49 @@ func (app *App) fetchSchema(ctx context.Context, key string) (*batcher.Schema, e
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("registry status: %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("schema registry returned %d", resp.StatusCode)
 	}
 
-	var s batcher.Schema
-	if err := json.NewDecoder(resp.Body).Decode(&s); err != nil {
+	var schema batcher.Schema
+	if err := json.NewDecoder(resp.Body).Decode(&schema); err != nil {
 		return nil, err
 	}
 
-	app.SchemaCache.Set(key, &s)
-	return &s, nil
+	app.SchemaCache.Set(key, &schema)
+	return &schema, nil
 }
 
-func (app *App) sendToDLT(ctx context.Context, m kafka.Message, reason error) {
-	app.Logger.Error("sending to DLT", "reason", reason)
-	app.DLTWriter.WriteMessages(ctx, kafka.Message{Key: m.Key, Value: m.Value})
+func (app *App) sendToDLT(m kafka.Message, reason error) {
+	app.Logger.Error("sending message to DLT", "reason", reason)
+
+	if app.DLTProducer == nil {
+		app.Logger.Error("DLT producer not configured")
+		return
+	}
+
+	err := app.DLTProducer.Produce(
+		&kafka.Message{
+			TopicPartition: kafka.TopicPartition{
+				Topic:     &app.Config.KafkaDLTTopic,
+				Partition: kafka.PartitionAny,
+			},
+			Key:     m.Key,
+			Value:   m.Value,
+			Headers: m.Headers,
+		},
+		nil,
+	)
+
+	if err != nil {
+		app.Logger.Error("failed to produce to DLT", "error", err)
+	}
 }
 
 func (app *App) runTickerFlusher(ctx context.Context) {
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ticker.C:
@@ -104,10 +148,34 @@ func (app *App) runTickerFlusher(ctx context.Context) {
 func (app *App) Shutdown() {
 	app.Logger.Info("shutting down application resources")
 
-	if app.DLTWriter != nil {
-		if err := app.DLTWriter.Close(); err != nil {
-			app.Logger.Error("failed to close DLT writer", "error", err)
+	if app.DLTProducer != nil {
+		app.DLTProducer.Flush(5000)
+		app.DLTProducer.Close()
+	}
+}
+
+/*
+Kafka header carrier for OpenTelemetry propagation
+*/
+type kafkaHeaderCarrier []kafka.Header
+
+func (c kafkaHeaderCarrier) Get(key string) string {
+	for _, h := range c {
+		if h.Key == key {
+			return string(h.Value)
 		}
 	}
+	return ""
+}
 
+func (c kafkaHeaderCarrier) Set(key string, value string) {
+	// no-op (consumer side)
+}
+
+func (c kafkaHeaderCarrier) Keys() []string {
+	keys := make([]string, 0, len(c))
+	for _, h := range c {
+		keys = append(keys, h.Key)
+	}
+	return keys
 }

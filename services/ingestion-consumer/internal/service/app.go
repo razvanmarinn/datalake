@@ -7,10 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"github.com/razvanmarinn/ingestion_consumer/internal/batcher"
 	"github.com/razvanmarinn/ingestion_consumer/internal/config"
 	"github.com/razvanmarinn/ingestion_consumer/internal/infra"
-	"github.com/segmentio/kafka-go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -24,23 +24,35 @@ type App struct {
 	Config config.Config
 	Logger *slog.Logger
 
-	// Core Dependencies
+	// Tracing
 	TracerProvider interface{}
 	Tracer         trace.Tracer
 	HttpClient     *http.Client
 
-	// Kafka Writer (Reader is local to Run loop now)
-	DLTWriter     *kafka.Writer
+	// Kafka
+	DLTProducer *kafka.Producer
+
+	// Infra
 	GrpcConnCache *infra.GRPCConnCache
-	// Batching State
+
+	// Batching
 	Batcher     *batcher.Batcher
-	BatcherLock sync.Mutex // Added this back
+	BatcherLock sync.Mutex
 	SchemaCache *infra.SchemaCache
 }
 
-// NewApp initializes static dependencies. It DOES NOT start the reader.
+// NewApp initializes static dependencies. It DOES NOT start consumption.
 func NewApp(cfg config.Config, logger *slog.Logger) (*App, error) {
 	tp, err := infra.InitTracer(cfg.OtelCollectorAddr, ServiceName)
+	if err != nil {
+		return nil, err
+	}
+
+	dltProducer, err := kafka.NewProducer(&kafka.ConfigMap{
+		"bootstrap.servers": cfg.KafkaBrokers[0],
+		"client.id":        ServiceName + "-dlt-producer",
+		"acks":             "all",
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -52,55 +64,49 @@ func NewApp(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Tracer:         otel.Tracer(ServiceName),
 		HttpClient:     &http.Client{Timeout: 5 * time.Second},
 		GrpcConnCache:  infra.NewGRPCConnCache(),
-		DLTWriter: kafka.NewWriter(kafka.WriterConfig{
-			Brokers:  cfg.KafkaBrokers,
-			Topic:    cfg.KafkaDLTTopic,
-			Balancer: &kafka.LeastBytes{},
-		}),
-
-		Batcher:     batcher.NewBatcher("mixed-topics-batch", MaxBatchSize),
-		SchemaCache: infra.NewSchemaCache(),
+		DLTProducer:    dltProducer,
+		Batcher:        batcher.NewBatcher("mixed-topics-batch", MaxBatchSize),
+		SchemaCache:    infra.NewSchemaCache(),
 	}, nil
 }
 
-// Run is now the Lifecycle Manager
+// Run is the lifecycle manager.
 func (app *App) Run(ctx context.Context) {
 	app.Logger.Info("entering application run loop")
 
 	for {
-		// Check for shutdown before restarting loop
 		if ctx.Err() != nil {
 			return
 		}
 
-		// --- PHASE 1: DISCOVERY ---
-		// Block here until we actually have topics. No errors, just waiting.
+		// ---- PHASE 1: Topic discovery ----
 		topics, err := app.waitForTopics(ctx)
 		if err != nil {
-			// Only happens if ctx is cancelled
 			return
 		}
 
-		// --- PHASE 2: CONSUMPTION ---
-		// We have topics! Run the consumer until topics change or error occurs.
+		// ---- PHASE 2: Consumption ----
 		app.Logger.Info("starting consumer group", "topics", topics)
 		app.consumeUntilChange(ctx, topics)
 
-		app.Logger.Info("consumer group stopped, restarting lifecycle...")
+		app.Logger.Info("consumer group stopped, restarting lifecycle")
 	}
 }
 
-// waitForTopics polls every minute until topics are found
+// waitForTopics blocks until at least one topic matches the regex.
 func (app *App) waitForTopics(ctx context.Context) ([]string, error) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
-	// Try immediately first
+	// Immediate attempt
 	if topics, err := infra.DiscoverTopics(app.Config.KafkaBrokers, app.Config.KafkaTopicRegex); err == nil && len(topics) > 0 {
 		return topics, nil
-	} else {
-		app.Logger.Info("no topics found matching pattern, waiting...", "pattern", app.Config.KafkaTopicRegex)
 	}
+
+	app.Logger.Info(
+		"no topics found matching pattern, waiting",
+		"pattern", app.Config.KafkaTopicRegex,
+	)
 
 	for {
 		select {
@@ -109,7 +115,7 @@ func (app *App) waitForTopics(ctx context.Context) ([]string, error) {
 		case <-ticker.C:
 			topics, err := infra.DiscoverTopics(app.Config.KafkaBrokers, app.Config.KafkaTopicRegex)
 			if err != nil {
-				app.Logger.Warn("discovery failed, retrying in 1 minute", "error", err)
+				app.Logger.Warn("topic discovery failed, retrying", "error", err)
 				continue
 			}
 			if len(topics) > 0 {

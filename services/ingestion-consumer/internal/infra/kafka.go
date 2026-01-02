@@ -1,50 +1,53 @@
 package infra
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/segmentio/kafka-go"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
 func DiscoverTopics(brokers []string, pattern string) ([]string, error) {
-	dialer := &kafka.Dialer{
-		Timeout:   10 * time.Second,
-		DualStack: true,
+	if len(brokers) == 0 {
+		return nil, fmt.Errorf("no Kafka brokers configured")
 	}
 
-	conn, err := dialer.DialContext(context.Background(), "tcp", brokers[0])
+	admin, err := kafka.NewAdminClient(&kafka.ConfigMap{
+		"bootstrap.servers": brokers[0],
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to dial broker: %w", err)
+		return nil, fmt.Errorf("failed to create admin client: %w", err)
 	}
-	defer conn.Close()
+	defer admin.Close()
 
-	partitions, err := conn.ReadPartitions()
+	// AdminClient APIs use millisecond timeouts
+	timeoutMs := int((10 * time.Second).Milliseconds())
+
+	metadata, err := admin.GetMetadata(nil, true, timeoutMs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read partitions: %w", err)
+		return nil, fmt.Errorf("failed to fetch metadata: %w", err)
 	}
 
-	topicMap := make(map[string]struct{})
 	matcher, err := regexp.Compile(pattern)
 	if err != nil {
 		return nil, fmt.Errorf("invalid regex pattern: %w", err)
 	}
 
-	for _, p := range partitions {
-		if strings.HasPrefix(p.Topic, "__") {
+	topics := make([]string, 0)
+
+	for topicName, topic := range metadata.Topics {
+		// Skip internal topics
+		if strings.HasPrefix(topicName, "__") {
 			continue
 		}
-		if matcher.MatchString(p.Topic) {
-			topicMap[p.Topic] = struct{}{}
+		if topic.Error.Code() != kafka.ErrNoError {
+			continue
 		}
-	}
-
-	var topics []string
-	for t := range topicMap {
-		topics = append(topics, t)
+		if matcher.MatchString(topicName) {
+			topics = append(topics, topicName)
+		}
 	}
 
 	if len(topics) == 0 {

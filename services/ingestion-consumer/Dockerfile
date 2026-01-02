@@ -1,19 +1,24 @@
-FROM golang:1.23.4 AS builder
-WORKDIR /app
+# Builder stage
+FROM golang:1.23-bullseye AS builder
 
+RUN apt-get update && apt-get install -y librdkafka-dev ca-certificates
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
 
-ARG GITHUB_PAT
+ENV CGO_ENABLED=1
+ENV GOOS=linux
+ENV GOARCH=arm64
 
-RUN git config --global url."https://${GITHUB_PAT}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+RUN go build -o ingestion-consumer .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o ingestion-consumer .
-RUN ls -l
+FROM debian:bullseye-slim
 
-FROM alpine:latest
+RUN apt-get update && apt-get install -y librdkafka1 ca-certificates
 
-COPY --from=builder /app/ .
+WORKDIR /app
+COPY --from=builder /app/ingestion-consumer .
 
-RUN chmod +x ingestion-consumer
-EXPOSE 8080
 CMD ["./ingestion-consumer"]

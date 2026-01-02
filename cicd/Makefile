@@ -6,7 +6,7 @@ IMAGES := $(shell docker images --format '{{.Repository}}' | grep '^datalake/')
 
 # Service mappings: source_path:deployment_file:deployment_name
 SERVICE_MAPPINGS = \
-	consumers/ingestion:consumer-deployment.yml:ingestion-consumer \
+	services/ingestion-consumer:consumer-deployment.yml:ingestion-consumer \
 	services/api-gateway:api_gateway.yaml:api-gateway \
 	services/data-catalog:data-catalog-deployment.yaml:data-catalog \
 	services/identity:identity-service.yaml:identity-service \

@@ -4,18 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"sort"
-	"syscall"
+	"sync"
 	"time"
 
 	pb "github.com/razvanmarinn/datalake/protobuf"
 	"github.com/razvanmarinn/ingestion_consumer/internal/batcher"
 	"github.com/razvanmarinn/ingestion_consumer/internal/infra"
-	"github.com/segmentio/kafka-go"
+
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"go.opentelemetry.io/otel/trace"
 )
+
+var consumerMu sync.Mutex
 
 func (app *App) FlushBatch(parentCtx context.Context, trigger string) {
 	app.BatcherLock.Lock()
@@ -25,14 +27,19 @@ func (app *App) FlushBatch(parentCtx context.Context, trigger string) {
 	}
 	batch := app.Batcher.Flush()
 	app.BatcherLock.Unlock()
+
 	if batch == nil {
 		return
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Link to parent trace
-	ctx, span := app.Tracer.Start(ctx, "ProcessBatch", trace.WithLinks(trace.LinkFromContext(parentCtx)))
+	ctx, span := app.Tracer.Start(
+		ctx,
+		"ProcessBatch",
+		trace.WithLinks(trace.LinkFromContext(parentCtx)),
+	)
 	defer span.End()
 
 	app.Logger.Info("flushing batch", "trigger", trigger, "size", len(batch.Messages))
@@ -43,52 +50,48 @@ func (app *App) FlushBatch(parentCtx context.Context, trigger string) {
 }
 
 func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) error {
-	// 1. Get Schema
 	schema, err := app.fetchSchema(ctx, string(batch.Messages[0].Key))
 	if err != nil {
 		return err
 	}
 
-	// 2. Convert to Avro
 	avroBytes, err := batch.GetMessagesAsAvroBytes(schema)
 	if err != nil {
 		return err
 	}
 
-	// 3. Register with Master
 	masterConn, err := app.GrpcConnCache.Get(app.Config.MasterAddress)
 	if err != nil {
 		return err
 	}
 	masterClient := pb.NewMasterServiceClient(masterConn)
 
-	fName := fmt.Sprintf("%s_%s.avro", batch.Topic, time.Now().Format("20060102150405"))
-	fileReq := &pb.ClientFileRequestToMaster{
-		FileName:   fName,
+	fileName := fmt.Sprintf("%s_%s.avro", batch.Topic, time.Now().Format("20060102150405"))
+	_, err = masterClient.RegisterFile(ctx, &pb.ClientFileRequestToMaster{
+		FileName:   fileName,
 		OwnerId:    batch.Messages[0].OwnerId,
 		ProjectId:  batch.Messages[0].ProjectId,
 		FileFormat: "avro",
 		FileSize:   int64(len(avroBytes)),
 		BatchInfo: &pb.Batches{
-			Batches: []*pb.Batch{{Uuid: batch.UUID.String(), Size: int32(len(avroBytes))}},
+			Batches: []*pb.Batch{
+				{Uuid: batch.UUID.String(), Size: int32(len(avroBytes))},
+			},
 		},
+	})
+	if err != nil {
+		return fmt.Errorf("master register failed: %w", err)
 	}
 
-	if _, err := masterClient.RegisterFile(ctx, fileReq); err != nil {
-		return fmt.Errorf("master reg failed: %w", err)
-	}
-
-	// 4. Get Worker Destination
-	destRes, err := masterClient.GetBatchDestination(ctx, &pb.ClientBatchRequestToMaster{
+	dest, err := masterClient.GetBatchDestination(ctx, &pb.ClientBatchRequestToMaster{
 		BatchId:   batch.UUID.String(),
 		BatchSize: int32(len(batch.Messages)),
 	})
 	if err != nil {
-		return fmt.Errorf("master dest failed: %w", err)
+		return fmt.Errorf("destination lookup failed: %w", err)
 	}
 
-	// 5. Send to Worker
-	workerAddr := fmt.Sprintf("%s:%d", destRes.GetWorkerIp(), destRes.GetWorkerPort())
+	workerAddr := fmt.Sprintf("%s:%d", dest.WorkerIp, dest.WorkerPort)
 	workerConn, err := app.GrpcConnCache.Get(workerAddr)
 	if err != nil {
 		return err
@@ -105,31 +108,39 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
 }
 
 func (app *App) consumeUntilChange(ctx context.Context, currentTopics []string) {
-	// 1. Create the Reader
-	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     app.Config.KafkaBrokers,
-		GroupID:     app.Config.KafkaGroupID,
-		GroupTopics: currentTopics,
-		MinBytes:    10e3,
-		MaxBytes:    10e6,
+	consumerMu.Lock()
+	defer consumerMu.Unlock()
+
+	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
+		"bootstrap.servers":               app.Config.KafkaBrokers[0],
+		"group.id":                        app.Config.KafkaGroupID + "-v2",
+		"enable.auto.commit":              false,
+		"enable.auto.offset.store":        false,
+		"auto.offset.reset":               "earliest",
+		"session.timeout.ms":              30000,
+		"heartbeat.interval.ms":           3000,
+		"go.events.channel.enable":        true,
+		"go.application.rebalance.enable": true,
 	})
-	defer reader.Close()
+	if err != nil {
+		panic(err)
+	}
+	defer consumer.Close()
 
-	// 2. Create context for this generation
-	readerCtx, cancelReader := context.WithCancel(ctx)
-	defer cancelReader()
+	sort.Strings(currentTopics)
 
-	// --- FIX START: Start the Time-Based Flusher ---
-	// This uses the readerCtx so it stops automatically when we reload topics
+	if err := consumer.SubscribeTopics(currentTopics, nil); err != nil {
+		panic(err)
+	}
+
+	readerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	go app.runTickerFlusher(readerCtx)
-	// --- FIX END ---
 
-	// 3. Start Background Monitor
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
-
-		sort.Strings(currentTopics)
 
 		for {
 			select {
@@ -144,32 +155,52 @@ func (app *App) consumeUntilChange(ctx context.Context, currentTopics []string) 
 				sort.Strings(newTopics)
 				if !reflect.DeepEqual(currentTopics, newTopics) {
 					app.Logger.Info("topic change detected", "old", currentTopics, "new", newTopics)
-					cancelReader() // Stops reader and flusher
+					cancel()
 					return
 				}
 			}
 		}
 	}()
 
-	// 4. Blocking Read Loop
 	for {
-		m, err := reader.ReadMessage(readerCtx)
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return
-			}
-			if errors.Is(err, context.DeadlineExceeded) {
-				continue
-			}
-			app.Logger.Error("read message error", "error", err)
-			time.Sleep(1 * time.Second)
+		select {
+		case <-readerCtx.Done():
+			return
 
-			// If connection is totally broken, exit to trigger full restart
-			if errors.Is(err, io.EOF) || errors.Is(err, syscall.ECONNREFUSED) {
-				return
+		case ev := <-consumer.Events():
+			switch e := ev.(type) {
+
+			case kafka.AssignedPartitions:
+				app.Logger.Info("partitions assigned", "partitions", e.Partitions)
+				consumer.Assign(e.Partitions)
+
+			case kafka.RevokedPartitions:
+				app.Logger.Info("partitions revoked")
+				consumer.Unassign()
+
+			case *kafka.Message:
+				app.processMessage(readerCtx, *e)
+
+				if _, err := consumer.StoreMessage(e); err != nil {
+					app.Logger.Error("offset store failed", "error", err)
+				}
+
+				_, err := consumer.Commit()
+				if err != nil {
+					var kerr kafka.Error
+					if errors.As(err, &kerr) && kerr.Code() == kafka.ErrNoOffset {
+						// ignore: no offset committed yet
+					} else {
+						app.Logger.Error("commit failed", "error", err)
+					}
+				}
+
+			case kafka.Error:
+				app.Logger.Error("kafka error", "error", e)
+				if e.IsFatal() {
+					return
+				}
 			}
-			continue
 		}
-		app.processMessage(readerCtx, m)
 	}
 }
