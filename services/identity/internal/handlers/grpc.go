@@ -15,7 +15,7 @@ type GRPCServer struct {
 	Logger *logging.Logger
 }
 
-func (s *GRPCServer) GetUserByUsername(ctx context.Context, in *pb.GetUserInfoRequest) (*pb.GetUserInfoResponse, error) {
+func (s *GRPCServer) GetUserInfo(ctx context.Context, in *pb.GetUserInfoRequest) (*pb.GetUserInfoResponse, error) {
 	user, _:= db.GetUser(s.DB, in.GetUsername())
 	return &pb.GetUserInfoResponse{UserId: user.ID.String(), Email: user.Email}, nil
 }

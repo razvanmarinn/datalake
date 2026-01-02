@@ -154,8 +154,8 @@ function App() {
           <div className="flex flex-wrap gap-2">
             {Object.entries(projects).map(([projectName, projectID]) => (
               <button
-                key={projectID}
-                onClick={() => handleGetFileList(projectID)}
+                key={projectName}
+                onClick={() => handleGetFileList(projectName)}
                 className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
               >
                 {projectName}

@@ -36,11 +36,17 @@ func GetProjectsByUser(database *sql.DB, logger *logging.Logger, idClient pb.Ide
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
 				return
 			}
+
+			logger.Error("Failed to call Identity Service",
+				zap.String("error", err.Error()),
+				zap.String("username", requestedUsername),
+			)
+
 			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Identity service error"})
 			return
 		}
 
-		projects, _ := db.GetProjects(database, requestedUsername)
+		projects, _ := db.GetProjects(database, userResp.UserId)
 		c.JSON(http.StatusOK, gin.H{
 			"user-id":  userResp.UserId,
 			"projects": projects,

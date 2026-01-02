@@ -12,7 +12,6 @@ import (
 	middleware "github.com/razvanmarinn/datalake/pkg/jwt/middleware"
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"github.com/razvanmarinn/datalake/pkg/metrics"
-	pb "github.com/razvanmarinn/datalake/protobuf"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -66,11 +65,11 @@ func main() {
 		_ = shutdown(ctx)
 	}()
 
-	identity_service_cnn, err := grpc.Dial("identity-service:50055", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		logger.Fatal("Failed to connect to gRPC server: ")
-	}
-	_ = pb.NewMetadataServiceClient(identity_service_cnn)
+	// identity_service_cnn, err := grpc.Dial("identity-service:50056", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// if err != nil {
+	// 	logger.Fatal("Failed to connect to gRPC server: ")
+	// }
+	// _ = pb.NewMetadataServiceClient(identity_service_cnn)
 
 	gatewayMetrics := metrics.NewGatewayMetrics("api-gateway")
 

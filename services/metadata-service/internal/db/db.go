@@ -222,12 +222,11 @@ func RegisterProject(db *sql.DB, project *models.ProjectMetadata) error {
 	return nil
 }
 
-func GetProjects(db *sql.DB, username string) (map[string]uuid.UUID, error) {
-	query := `SELECT p.name, p.owner_id FROM project p
-			  JOIN users u ON p.owner_id = u.id
-			  WHERE u.username = $1`
+func GetProjects(db *sql.DB, owner_id string) (map[string]uuid.UUID, error) {
+	query := `SELECT name, owner_id FROM project 
+			  WHERE owner_id = $1`
 
-	rows, err := db.Query(query, username)
+	rows, err := db.Query(query, owner_id)
 	if err != nil {
 		return nil, fmt.Errorf("error querying projects: %v", err)
 	}
