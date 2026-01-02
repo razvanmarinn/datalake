@@ -4,7 +4,7 @@ go 1.23.4
 
 require (
 	github.com/gin-gonic/gin v1.10.1
-	github.com/razvanmarinn/datalake v0.0.0-20260101232208-0a415fad7044
+	github.com/razvanmarinn/datalake v0.0.0-20260102112249-885aa189dfb4
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.62.0
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.37.0

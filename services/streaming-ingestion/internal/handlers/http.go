@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"os"
 
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"go.uber.org/zap"
@@ -115,13 +116,15 @@ func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter, logger *logging.Logger) *gin
 		})
 
 		if err != nil {
+			logger.WithError(err).Error("Failed to produce message to Kafka",
+				zap.String("topic", topic),
+				zap.String("brokers", os.Getenv("KAFKA_BROKERS")))
+
 			kf.Metrics.KafkaProduceErrors.WithLabelValues(topic, "write_error").Inc()
 			child.RecordError(err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to write to Kafka"})
 			child.End()
 			return
-		} else {
-			kf.Metrics.KafkaMessagesProduced.WithLabelValues(topic).Inc()
 		}
 		child.End()
 

@@ -70,7 +70,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("Failed to connect to gRPC server: ")
 	}
-	vs := pb.NewMetadataServiceClient(identity_service_cnn)
+	_ = pb.NewMetadataServiceClient(identity_service_cnn)
 
 	gatewayMetrics := metrics.NewGatewayMetrics("api-gateway")
 
@@ -82,8 +82,8 @@ func main() {
 	r.Use(gatewayMetrics.PrometheusMiddleware())
 	r.Use(middleware.AuthMiddleware())
 
-	r.Any("/ingest/", reverse_proxy.StreamingIngestionProxy(vs, "http://streaming-ingestion:8080", logger))
-	r.Any("/schema_registry/:project/*path", reverse_proxy.MetadataServiceyProxy("http://metadata-service:8080", logger))
+	r.Any("/ingest/:project", reverse_proxy.StreamingIngestionProxy("http://streaming-ingestion:8080", logger))
+	r.Any("/schema_registry/:project/*path", reverse_proxy.MetadataServiceProxy("http://metadata-service:8080", logger))
 
 	srv := &http.Server{
 		Addr:    ":8080",

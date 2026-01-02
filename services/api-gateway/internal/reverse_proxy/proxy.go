@@ -7,14 +7,13 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/razvanmarinn/datalake/pkg/logging"
-	pb "github.com/razvanmarinn/datalake/protobuf"
 	"go.uber.org/zap"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 )
 
-func StreamingIngestionProxy(vs pb.MetadataServiceClient, targetServiceURL string, logger *logging.Logger) gin.HandlerFunc {
+func StreamingIngestionProxy(targetServiceURL string, logger *logging.Logger) gin.HandlerFunc {
 	target, err := url.Parse(targetServiceURL)
 	if err != nil {
 		logger.Fatal("Invalid target URL for StreamingIngestionProxy")
@@ -22,14 +21,12 @@ func StreamingIngestionProxy(vs pb.MetadataServiceClient, targetServiceURL strin
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
+	// Standard Director for host/scheme logic
 	proxy.Director = func(req *http.Request) {
-		// Set basic proxy headers
 		req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
 		req.Host = target.Host
-
-		req.URL.Path = "/ingest"
 	}
 
 	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
@@ -38,33 +35,34 @@ func StreamingIngestionProxy(vs pb.MetadataServiceClient, targetServiceURL strin
 	}
 
 	return func(c *gin.Context) {
+		projectName := c.Param("project")
+		if projectName == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Project name is required in URL"})
+			return
+		}
+
 		userID, ok := c.Get("userID")
 		if !ok {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing userID in context"})
 			return
 		}
 
-		projectID, ok := c.Get("projectID")
-		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing projectID in context"})
-			return
-		}
-
+		c.Request.Header.Set("X-Project-ID", projectName)
 		c.Request.Header.Set("X-User-ID", userID.(string))
-		c.Request.Header.Set("X-Project-ID", projectID.(string))
 
 		otel.GetTextMapPropagator().Inject(c.Request.Context(), propagation.HeaderCarrier(c.Request.Header))
 
+		c.Request.URL.Path = "/ingest"
+
 		logger.Info("Forwarding request to Streaming Ingestion",
-			zap.String("user_id", userID.(string)),
-			zap.String("project_id", projectID.(string)),
-			zap.String("path", c.Request.URL.Path))
+			zap.String("project", projectName),
+			zap.String("user_id", userID.(string)))
 
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
 }
 
-func MetadataServiceyProxy(targetServiceURL string, logger *logging.Logger) gin.HandlerFunc {
+func MetadataServiceProxy(targetServiceURL string, logger *logging.Logger) gin.HandlerFunc {
 
 	target, err := url.Parse(targetServiceURL)
 	if err != nil {
@@ -98,8 +96,6 @@ func MetadataServiceyProxy(targetServiceURL string, logger *logging.Logger) gin.
 			return
 		}
 		userID := userIDIfc.(string)
-
-	
 
 		c.Request.Header.Set("X-User-ID", userID)
 
