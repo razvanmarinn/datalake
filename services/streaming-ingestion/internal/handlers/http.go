@@ -107,8 +107,8 @@ func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter, logger *logging.Logger) *gin
 		carrier := kafkaHeaderCarrier{headers: &headers}
 		propagator.Inject(ctx, &carrier)
 
-		topic := kf.TopicResolver.ResolveTopic(msg.SchemaName)
-		err := kf.WriteMessageForSchema(ctx, msg.ProjectId, kafka.Message{
+		topic := kf.TopicResolver.ResolveTopic(msg.ProjectId, msg.SchemaName)
+		err := kf.WriteMessageForSchema(ctx, msg.ProjectId, msg.SchemaName, kafka.Message{
 			Key:     []byte(msg.SchemaName),
 			Value:   jsonData,
 			Headers: headers,

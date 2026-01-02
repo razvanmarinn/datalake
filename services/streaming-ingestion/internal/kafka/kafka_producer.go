@@ -22,10 +22,8 @@ func NewKafkaTopicResolver() *KafkaTopicResolver {
 	return &KafkaTopicResolver{}
 }
 
-// FIX: Generate a topic name that satisfies the consumer regex "^.+\\..+"
-func (k *KafkaTopicResolver) ResolveTopic(projectName string) string {
-	// Example: "datalake.project-razv"
-	return fmt.Sprintf("datalake.%s", projectName)
+func (k *KafkaTopicResolver) ResolveTopic(projectName string, schemaName string) string {
+	return fmt.Sprintf("%s-%s", projectName, schemaName)
 }
 
 func NewKafkaWriter(brokers []string) *KafkaWriter {
@@ -33,22 +31,18 @@ func NewKafkaWriter(brokers []string) *KafkaWriter {
 		Writer: kafka.NewWriter(kafka.WriterConfig{
 			Brokers:      brokers,
 			Balancer:     &kafka.LeastBytes{},
-			Async:        false, // Set to true for higher throughput
+			Async:        false,
 			BatchSize:    10,
 			BatchTimeout: 1 * time.Second,
 			RequiredAcks: 1,
 		}),
-		TopicResolver: NewKafkaTopicResolver(), // Initialize the resolver
+		TopicResolver: NewKafkaTopicResolver(),
 		Brokers:       brokers,
 	}
 }
 
-func (k *KafkaWriter) SetMetrics(metrics *metrics.StreamingMetrics) {
-	k.Metrics = metrics
-}
-
-func (k *KafkaWriter) WriteMessageForSchema(ctx context.Context, projectName string, message kafka.Message) error {
-	topic := k.TopicResolver.ResolveTopic(projectName)
+func (k *KafkaWriter) WriteMessageForSchema(ctx context.Context, projectName string, schemaName string, message kafka.Message) error {
+	topic := k.TopicResolver.ResolveTopic(projectName, schemaName)
 
 	message.Topic = topic
 
@@ -57,4 +51,8 @@ func (k *KafkaWriter) WriteMessageForSchema(ctx context.Context, projectName str
 	}
 
 	return k.Writer.WriteMessages(ctx, message)
+}
+
+func (k *KafkaWriter) SetMetrics(metrics *metrics.StreamingMetrics) {
+	k.Metrics = metrics
 }

@@ -70,7 +70,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("Failed to connect to gRPC server: ")
 	}
-	vs := pb.NewVerificationServiceClient(identity_service_cnn)
+	vs := pb.NewMetadataServiceClient(identity_service_cnn)
 
 	gatewayMetrics := metrics.NewGatewayMetrics("api-gateway")
 

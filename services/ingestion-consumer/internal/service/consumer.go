@@ -3,9 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
@@ -20,23 +18,6 @@ type IngestMessageBody struct {
 	ProjectId  string                 `json:"project_id"`
 	OwnerId    string                 `json:"owner_id"`
 	Data       map[string]interface{} `json:"data"`
-}
-
-func (app *App) Run(ctx context.Context) {
-	app.Logger.Info("starting consumer", "pattern", app.Config.KafkaTopicRegex)
-	go app.runTickerFlusher(ctx)
-
-	for {
-		m, err := app.KafkaReader.ReadMessage(ctx)
-		if err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, io.EOF) {
-				return
-			}
-			app.Logger.Error("error reading message", "error", err)
-			continue
-		}
-		app.processMessage(ctx, m)
-	}
 }
 
 func (app *App) processMessage(ctx context.Context, m kafka.Message) {
@@ -118,4 +99,15 @@ func (app *App) runTickerFlusher(ctx context.Context) {
 			return
 		}
 	}
+}
+
+func (app *App) Shutdown() {
+	app.Logger.Info("shutting down application resources")
+
+	if app.DLTWriter != nil {
+		if err := app.DLTWriter.Close(); err != nil {
+			app.Logger.Error("failed to close DLT writer", "error", err)
+		}
+	}
+
 }

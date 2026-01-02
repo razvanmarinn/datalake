@@ -34,9 +34,9 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		KafkaBrokers:    strings.Split(kafkaBrokers, ","),
-		KafkaTopicRegex: topicRegex, 
-		KafkaGroupID:    groupID,
+		KafkaBrokers:       strings.Split(kafkaBrokers, ","),
+		KafkaTopicRegex:    topicRegex,
+		KafkaGroupID:       groupID,
 		KafkaDLTTopic:      getEnv("KAFKA_DLT_TOPIC", "ingestion-dlt"),
 		SchemaRegistryHost: getEnv("SCHEMA_REGISTRY_HOST", "schema-registry.datalake:8081"),
 		SchemaProjectName:  getEnv("SCHEMA_PROJECT_NAME", "razvan"),

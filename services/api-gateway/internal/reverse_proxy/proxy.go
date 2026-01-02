@@ -14,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 )
 
-func StreamingIngestionProxy(vs pb.VerificationServiceClient, targetServiceURL string, logger *logging.Logger) gin.HandlerFunc {
+func StreamingIngestionProxy(vs pb.MetadataServiceClient, targetServiceURL string, logger *logging.Logger) gin.HandlerFunc {
 	target, err := url.Parse(targetServiceURL)
 	if err != nil {
 		logger.Fatal("Invalid target URL for StreamingIngestionProxy")

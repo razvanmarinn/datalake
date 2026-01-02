@@ -8,7 +8,7 @@ import (
 	pb "github.com/razvanmarinn/datalake/protobuf"
 )
 
-func CheckProjectExists(client pb.VerificationServiceClient, projectName string) (bool, error) {
+func CheckProjectExists(client pb.MetadataServiceClient, projectName string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

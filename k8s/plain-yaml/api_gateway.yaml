@@ -40,7 +40,7 @@ spec:
     spec:
       containers:
         - name: api-gateway
-          image: razvan1y/api_gateway:latest
+          image: razvan1y/api-gateway:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
