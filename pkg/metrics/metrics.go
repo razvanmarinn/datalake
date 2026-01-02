@@ -11,20 +11,20 @@ import (
 )
 
 type ServiceMetrics struct {
-	HTTPRequestsTotal      *prometheus.CounterVec
-	HTTPRequestDuration    *prometheus.HistogramVec
-	ActiveConnections      prometheus.Gauge
-	CustomCounters         map[string]*prometheus.CounterVec
-	CustomHistograms       map[string]*prometheus.HistogramVec
-	CustomGauges           map[string]prometheus.Gauge
+	HTTPRequestsTotal   *prometheus.CounterVec
+	HTTPRequestDuration *prometheus.HistogramVec
+	ActiveConnections   prometheus.Gauge
+	CustomCounters      map[string]*prometheus.CounterVec
+	CustomHistograms    map[string]*prometheus.HistogramVec
+	CustomGauges        map[string]prometheus.Gauge
 }
 
 func NewServiceMetrics(serviceName string) *ServiceMetrics {
 	return &ServiceMetrics{
 		HTTPRequestsTotal: promauto.NewCounterVec(
 			prometheus.CounterOpts{
-				Name: "http_requests_total",
-				Help: "Total number of HTTP requests processed",
+				Name:        "http_requests_total",
+				Help:        "Total number of HTTP requests processed",
 				ConstLabels: prometheus.Labels{"service": serviceName},
 			},
 			[]string{"method", "endpoint", "status_code"},
@@ -32,18 +32,18 @@ func NewServiceMetrics(serviceName string) *ServiceMetrics {
 
 		HTTPRequestDuration: promauto.NewHistogramVec(
 			prometheus.HistogramOpts{
-				Name: "http_request_duration_seconds",
-				Help: "Duration of HTTP requests in seconds",
+				Name:        "http_request_duration_seconds",
+				Help:        "Duration of HTTP requests in seconds",
 				ConstLabels: prometheus.Labels{"service": serviceName},
-				Buckets: prometheus.DefBuckets,
+				Buckets:     prometheus.DefBuckets,
 			},
 			[]string{"method", "endpoint"},
 		),
 
 		ActiveConnections: promauto.NewGauge(
 			prometheus.GaugeOpts{
-				Name: "active_connections",
-				Help: "Number of active connections",
+				Name:        "active_connections",
+				Help:        "Number of active connections",
 				ConstLabels: prometheus.Labels{"service": serviceName},
 			},
 		),
@@ -57,8 +57,8 @@ func NewServiceMetrics(serviceName string) *ServiceMetrics {
 func (sm *ServiceMetrics) AddCustomCounter(name, help string, labels []string, serviceName string) *prometheus.CounterVec {
 	counter := promauto.NewCounterVec(
 		prometheus.CounterOpts{
-			Name: name,
-			Help: help,
+			Name:        name,
+			Help:        help,
 			ConstLabels: prometheus.Labels{"service": serviceName},
 		},
 		labels,
@@ -73,10 +73,10 @@ func (sm *ServiceMetrics) AddCustomHistogram(name, help string, labels []string,
 	}
 	histogram := promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: name,
-			Help: help,
+			Name:        name,
+			Help:        help,
 			ConstLabels: prometheus.Labels{"service": serviceName},
-			Buckets: buckets,
+			Buckets:     buckets,
 		},
 		labels,
 	)
@@ -87,8 +87,8 @@ func (sm *ServiceMetrics) AddCustomHistogram(name, help string, labels []string,
 func (sm *ServiceMetrics) AddCustomGauge(name, help string, serviceName string) prometheus.Gauge {
 	gauge := promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Name: name,
-			Help: help,
+			Name:        name,
+			Help:        help,
 			ConstLabels: prometheus.Labels{"service": serviceName},
 		},
 	)
@@ -175,9 +175,9 @@ func NewStreamingMetrics(serviceName string) *StreamingMetrics {
 
 type GatewayMetrics struct {
 	*ServiceMetrics
-	ProxyRequestsTotal    *prometheus.CounterVec
-	ProxyRequestDuration  *prometheus.HistogramVec
-	AuthRequestsTotal     *prometheus.CounterVec
+	ProxyRequestsTotal   *prometheus.CounterVec
+	ProxyRequestDuration *prometheus.HistogramVec
+	AuthRequestsTotal    *prometheus.CounterVec
 }
 
 func NewGatewayMetrics(serviceName string) *GatewayMetrics {
@@ -187,20 +187,20 @@ func NewGatewayMetrics(serviceName string) *GatewayMetrics {
 		ProxyRequestsTotal: sm.AddCustomCounter(
 			"proxy_requests_total",
 			"Total number of requests proxied to downstream services",
-			[]string{"service", "method", "status_code"},
+			[]string{"method", "status_code"}, 
 			serviceName,
 		),
 		ProxyRequestDuration: sm.AddCustomHistogram(
 			"proxy_request_duration_seconds",
 			"Duration of proxy requests to downstream services in seconds",
-			[]string{"service", "method"},
+			[]string{"method"}, 
 			nil,
 			serviceName,
 		),
 		AuthRequestsTotal: sm.AddCustomCounter(
 			"auth_requests_total",
 			"Total number of authentication requests",
-			[]string{"status"},
+			[]string{"status"}, 
 			serviceName,
 		),
 	}
