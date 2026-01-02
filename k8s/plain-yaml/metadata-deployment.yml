@@ -117,7 +117,7 @@ spec:
             - name: KAFKA_BOOTSTRAP_SERVERS
               value: "my-kafka-cluster-kafka-bootstrap.kafka.svc:9092"
             - name: IDENTITY_SERVICE_ADDR
-              value: "identity-service.datalake.svc:50055"
+              value: "identity-service.datalake.svc:50056"
             - name: DB_HOST
               value: "metadata-postgres"
             - name: DB_USER

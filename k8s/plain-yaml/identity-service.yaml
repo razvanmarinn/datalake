@@ -32,7 +32,7 @@ spec:
       port: 8082
       targetPort: 8082
     - name: grpc
-      port: 50055
+      port: 50056
       targetPort: 50056
   selector:
     app: identity-service

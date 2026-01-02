@@ -3,7 +3,9 @@ package handlers
 import (
 	"database/sql"
 	"net/http"
+	"time" // Added for MaxAge
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/razvanmarinn/datalake/pkg/jwt/middleware"
 	"github.com/razvanmarinn/datalake/pkg/logging"
@@ -15,7 +17,17 @@ import (
 func SetupRouter(database *sql.DB, logger *logging.Logger, prov *kafka.Provisioner, idClient pb.IdentityServiceClient) *gin.Engine {
 	r := gin.Default()
 
+	r.Use(cors.New(cors.Config{
+		AllowOrigins: []string{"http://localhost:3001"},
+		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
+
 	r.GET("/health", func(c *gin.Context) { c.Status(http.StatusOK) })
+	r.GET("/:project_name/schema/:schema_name", helpers.GetSchema(database, logger))
 
 	auth := r.Group("/")
 	auth.Use(middleware.AuthMiddleware())
@@ -27,7 +39,6 @@ func SetupRouter(database *sql.DB, logger *logging.Logger, prov *kafka.Provision
 		// --- Schema Management ---
 		auth.POST("/:project_name/schema", helpers.CreateSchema(database, logger, prov))
 		auth.PUT("/:project_name/schema", helpers.UpdateSchema(database, logger))
-		auth.GET("/:project_name/schema/:schema_name", helpers.GetSchema(database, logger))
 	}
 
 	return r

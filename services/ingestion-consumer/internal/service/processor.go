@@ -48,9 +48,17 @@ func (app *App) FlushBatch(parentCtx context.Context, trigger string) {
 		app.Logger.Error("failed to dispatch batch", "error", err)
 	}
 }
-
 func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) error {
-	schema, err := app.fetchSchema(ctx, string(batch.Messages[0].Key))
+	if len(batch.Messages) == 0 {
+		return nil
+	}
+
+	// FIX: Extract ProjectId from the first message in the batch
+	projectId := batch.Messages[0].ProjectId
+	key := string(batch.Messages[0].Key)
+
+	// FIX: Pass projectId as the second argument
+	schema, err := app.fetchSchema(ctx, projectId, key)
 	if err != nil {
 		return err
 	}

@@ -33,7 +33,7 @@ function App() {
 
       // Fetch projects for this username
       const projResp = await axios.get(
-        `http://localhost:8082/projects/by-username/${username}`,
+        `http://localhost:8081/projects/by-username/${username}`,
         {
           headers: { Authorization: `Bearer ${response.data.token}` },
         }
