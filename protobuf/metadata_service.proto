@@ -10,11 +10,9 @@ import "google/protobuf/timestamp.proto";
 service MetadataService {
     rpc VerifyProjectExistence(VerifyProjectExistenceRequest) returns (VerifyProjectExistenceResponse);
 
-    // Compaction Job Management
     rpc GetCompactionJob(GetCompactionJobRequest) returns (GetCompactionJobResponse);
     rpc UpdateCompactionJobStatus(UpdateCompactionJobStatusRequest) returns (SimpleResponse);
 
-    // Block Management
     rpc RegisterBlock(RegisterBlockRequest) returns (SimpleResponse);
     rpc GetBlockLocations(GetBlockLocationsRequest) returns (GetBlockLocationsResponse);
 }
@@ -69,7 +67,7 @@ message RegisterBlockRequest {
     string format = 7; // e.g., "avro", "binary"
 }
 
-message BlockLocation {
+message MetadataBlockLocation {
     string block_id = 1;
     string worker_id = 2;
     string path = 3;
@@ -80,5 +78,5 @@ message GetBlockLocationsRequest {
 }
 
 message GetBlockLocationsResponse {
-    repeated BlockLocation locations = 1;
+    repeated MetadataBlockLocation locations = 1;
 }

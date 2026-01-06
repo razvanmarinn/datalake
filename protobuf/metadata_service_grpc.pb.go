@@ -31,10 +31,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type MetadataServiceClient interface {
 	VerifyProjectExistence(ctx context.Context, in *VerifyProjectExistenceRequest, opts ...grpc.CallOption) (*VerifyProjectExistenceResponse, error)
-	// Compaction Job Management
 	GetCompactionJob(ctx context.Context, in *GetCompactionJobRequest, opts ...grpc.CallOption) (*GetCompactionJobResponse, error)
 	UpdateCompactionJobStatus(ctx context.Context, in *UpdateCompactionJobStatusRequest, opts ...grpc.CallOption) (*SimpleResponse, error)
-	// Block Management
 	RegisterBlock(ctx context.Context, in *RegisterBlockRequest, opts ...grpc.CallOption) (*SimpleResponse, error)
 	GetBlockLocations(ctx context.Context, in *GetBlockLocationsRequest, opts ...grpc.CallOption) (*GetBlockLocationsResponse, error)
 }
@@ -102,10 +100,8 @@ func (c *metadataServiceClient) GetBlockLocations(ctx context.Context, in *GetBl
 // for forward compatibility.
 type MetadataServiceServer interface {
 	VerifyProjectExistence(context.Context, *VerifyProjectExistenceRequest) (*VerifyProjectExistenceResponse, error)
-	// Compaction Job Management
 	GetCompactionJob(context.Context, *GetCompactionJobRequest) (*GetCompactionJobResponse, error)
 	UpdateCompactionJobStatus(context.Context, *UpdateCompactionJobStatusRequest) (*SimpleResponse, error)
-	// Block Management
 	RegisterBlock(context.Context, *RegisterBlockRequest) (*SimpleResponse, error)
 	GetBlockLocations(context.Context, *GetBlockLocationsRequest) (*GetBlockLocationsResponse, error)
 	mustEmbedUnimplementedMetadataServiceServer()
