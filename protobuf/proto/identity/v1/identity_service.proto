@@ -1,0 +1,17 @@
+syntax = "proto3";
+package identity.v1;
+
+option go_package = "github.com/razvanmarinn/datalake/protobuf/gen/go/identity/v1;identityv1";
+
+service IdentityService {
+    rpc GetUserInfo(GetUserInfoRequest) returns (GetUserInfoResponse) {}
+}
+
+message GetUserInfoRequest {
+    string username = 1;
+}
+
+message GetUserInfoResponse {
+    string user_id = 1;
+    string email = 3;
+}

@@ -1,0 +1,92 @@
+syntax = "proto3";
+package common.v1;
+
+option go_package = "github.com/razvanmarinn/datalake/protobuf/gen/go/common/v1;commonv1";
+message BlockInfo {
+    string uuid = 1;
+    int64 size = 2; // Changed to int64 for future-proofing
+}
+
+message BlockList {
+    repeated BlockInfo blocks = 1;
+}
+
+message ClientFileRequestToMaster {
+    string file_name = 1;
+    string owner_id = 2;
+    string project_id = 3;
+    string file_format = 4; // "avro", "parquet", "binary"
+    int32 hash = 5;
+    int64 file_size = 6;
+    
+    // The blocks that make up this file
+    BlockList block_info = 7; 
+
+    // NEW: Tells Master if this is a result of compaction
+    bool is_compacted = 8; 
+}
+
+message ClientBlockRequestToMaster {
+    string block_id = 1;
+    int64 block_size = 2;
+}
+
+message MasterResponse {
+    string worker_ip = 1;
+    int32 worker_port = 2;
+}
+
+message MasterFileResponse {
+    bool success = 1;
+}
+
+message WorkerResponse {
+    bool success = 1;
+}
+
+message BlockLocation {
+    repeated string worker_ids = 1;
+}
+
+message MasterMetadataResponse {
+    repeated string block_ids = 1;
+    map<string, BlockLocation> block_locations = 2;
+}
+
+message Location {
+    string file_name = 1;
+}
+
+message ApiRequestForFileList {
+    string owner_id = 1 ;
+    string project_id = 2;
+}
+
+message FileListResponse {
+    repeated string file_list_names = 1;
+}
+
+
+message CompactionRequest {
+    repeated string old_file_names = 1; // Files to remove
+    ClientFileRequestToMaster new_file = 2; // New optimized file to add
+}
+
+message CompactionResponse {
+    bool success = 1;
+}
+
+message GetProjectFilesRequest {
+    string owner_id = 1;
+    string project_id = 2;
+}
+
+message FileDetail {
+    string file_name = 1;
+    int64 total_size = 2;
+    bool is_compacted = 3;
+}
+
+message ProjectFilesResponse {
+    repeated FileDetail files = 1;
+}

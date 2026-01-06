@@ -17,7 +17,7 @@ SERVICE_MAPPINGS = \
 
 export DOCKER_BUILDKIT=1
 
-.PHONY: all apply-rbac docker-env docker-login deploy deploy-all port-forward rollout rollout-all list-services help status clean-ports
+.PHONY: all apply-rbac docker-env docker-login deploy deploy-all port-forward rollout rollout-all list-services help status clean-ports proto proto-lint proto-clean
 
 all: docker-env
 # DOCKER
@@ -205,8 +205,23 @@ status:
 	@echo "🎯 Pod Status:"
 	@kubectl get pods -n $(NAMESPACE)
 
-# Clean up port forwards
 clean-ports:
 	@echo "🧹 Cleaning up port forwards..."
 	@pkill -f "kubectl port-forward" || true
 	@echo "✅ Port forwards cleaned up"
+
+PROTO_ROOT := ../protobuf
+
+proto: proto-clean proto-lint
+	@echo "🛠️  Generating Protobuf code..."
+	cd $(PROTO_ROOT) && buf generate
+	@echo "✅ Protobuf generation complete! Files updated in $(PROTO_ROOT)/gen/go/"
+
+proto-lint:
+	@echo "🔍 Linting Protobuf files..."
+	cd $(PROTO_ROOT) && buf lint
+	@echo "✅ Linting passed!"
+
+proto-clean:
+	@echo "🧹 Cleaning generated Protobuf files..."
+	rm -rf $(PROTO_ROOT)/gen/go/*

@@ -1,0 +1,18 @@
+syntax = "proto3";
+package lb.v1;
+
+option go_package = "github.com/razvanmarinn/datalake/protobuf/gen/go/lb/v1;lbv1";
+
+service LBService {
+    rpc GetWorkerID(GetWorkerIDRequest) returns (GetWorkerIDResponse);
+}
+
+message UUID {
+    string value = 1;
+}
+
+message GetWorkerIDRequest {}
+
+message GetWorkerIDResponse {
+    UUID worker_id = 1;
+}

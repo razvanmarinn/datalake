@@ -114,6 +114,8 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
 		Data:       avroBytes,
 	})
 
+	
+
 	return err
 }
 
