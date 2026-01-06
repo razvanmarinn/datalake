@@ -40,6 +40,17 @@ deploy-master:
 	kubectl rollout restart deployment/master -n $(NAMESPACE)
 	@echo "✅ dfs-master deployed successfully!"
 
+deploy-worker:
+	docker build -t datalake/dfs-worker:latest -f ../services/dfs/Dockerfile.worker ../services/dfs
+	docker tag datalake/dfs-worker:latest $(REGISTRY)/dfs-worker:latest
+	docker push $(REGISTRY)/dfs-worker:latest
+	@echo "☸️  Deploying to Kubernetes..."
+	# Apply the new StatefulSet and PVCs
+	kubectl apply -f $(K8S_DIR)/worker-deployment.yaml -n $(NAMESPACE)
+	kubectl set image statefulset/worker worker=$(REGISTRY)/dfs-worker:latest -n $(NAMESPACE)
+	kubectl rollout restart statefulset/worker -n $(NAMESPACE)
+	@echo "✅ dfs-worker deployed successfully!"
+	
 deploy-cronjob:
 	docker build -t datalake/compactor:latest -f ../services/compactor/Dockerfile ..
 	docker tag datalake/compactor:latest $(REGISTRY)/compactor:latest

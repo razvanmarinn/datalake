@@ -47,7 +47,6 @@ func main() {
 	grpcServer := grpc.NewServer(opts...)
 
 	worker := nodes.NewWorkerNodeWithState(state)
-	worker.CreateIfStorageFolderDoesntExist()
 	worker.Start()
 
 	state.SetID(worker.ID)

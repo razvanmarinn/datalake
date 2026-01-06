@@ -1,138 +1,84 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: PersistentVolume
 metadata:
-  name: worker-1
+  name: global-data-pv
+spec:
+  capacity:
+    storage: 15Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+  hostPath:
+    path: /datalake/worker_data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: global-data-pvc
   namespace: datalake
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: worker-1
-  template:
-    metadata:
-      labels:
-        app: worker-1
-    spec:
-      containers:
-        - name: worker
-          image: razvan1y/worker:latest
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 50051
-          env:
-            - name: GRPC_PORT
-              value: ":50051"
-          volumeMounts:
-            - name: worker-state-storage
-              mountPath: /data # Mount path in the container
-      volumes:
-        - name: worker-state-storage
-          persistentVolumeClaim:
-            claimName: worker1-state-pvc
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 15Gi
+  volumeName: global-data-pv
+  storageClassName: standard
 
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: worker-1
+  name: worker-headless
   namespace: datalake
+  labels:
+    app: worker
 spec:
-  type: ClusterIP
   ports:
-    - port: 50051
-      targetPort: 50051
+  - port: 50051
+    name: grpc
+    targetPort: 50051
+  clusterIP: None # Required for StatefulSets
   selector:
-    app: worker-1
+    app: worker
 
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: worker-2
+  name: worker
   namespace: datalake
 spec:
-  replicas: 1
+  serviceName: "worker-headless"
+  replicas: 3
   selector:
     matchLabels:
-      app: worker-2
+      app: worker
   template:
     metadata:
       labels:
-        app: worker-2
+        app: worker
     spec:
       containers:
-        - name: worker
-          image: razvan1y/worker:latest
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 50052
-          env:
-            - name: GRPC_PORT
-              value: ":50052"
-          volumeMounts:
-            - name: worker-state-storage
-              mountPath: /data
+      - name: worker
+        image: razvan1y/worker:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 50051
+          name: grpc
+        env:
+        - name: GRPC_PORT
+          value: ":50051"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: global-storage
+          mountPath: /data
+          subPathExpr: $(POD_NAME)
       volumes:
-        - name: worker-state-storage
-          persistentVolumeClaim:
-            claimName: worker2-state-pvc
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: worker-2
-  namespace: datalake
-spec:
-  type: ClusterIP
-  ports:
-    - port: 50052
-      targetPort: 50052
-  selector:
-    app: worker-2
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: worker-3
-  namespace: datalake
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: worker-3
-  template:
-    metadata:
-      labels:
-        app: worker-3
-    spec:
-      containers:
-        - name: worker
-          image: razvan1y/worker:latest
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 50053
-          env:
-            - name: GRPC_PORT
-              value: ":50053"
-          volumeMounts:
-            - name: worker-state-storage
-              mountPath: /data
-      volumes:
-        - name: worker-state-storage
-          persistentVolumeClaim:
-            claimName: worker3-state-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: worker-3
-  namespace: datalake
-spec:
-  type: ClusterIP
-  ports:
-    - port: 50053
-      targetPort: 50053
-  selector:
-    app: worker-3
+      - name: global-storage
+        persistentVolumeClaim:
+          claimName: global-data-pvc

@@ -1,91 +1,148 @@
 package handlers
 
 import (
-	"context"
-	"database/sql"
+    "context"
+    "database/sql"
+    "fmt"
 
-	"github.com/razvanmarinn/datalake/pkg/logging"
-	pb "github.com/razvanmarinn/datalake/protobuf"
-	"go.uber.org/zap"
+    "github.com/google/uuid"
+    "github.com/razvanmarinn/datalake/pkg/logging"
+    pb "github.com/razvanmarinn/datalake/protobuf"
+    "go.uber.org/zap"
 
-	"github.com/razvanmarinn/metadata-service/internal/db"
-	"google.golang.org/protobuf/types/known/timestamppb"
+    "github.com/razvanmarinn/metadata-service/internal/db"
+    "github.com/razvanmarinn/metadata-service/internal/models"
+    "google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type GRPCServer struct {
-	pb.UnimplementedMetadataServiceServer
-	DB     *sql.DB
-	Logger *logging.Logger
-}
-
-func (s *GRPCServer) VerifyProjectExistence(ctx context.Context, in *pb.VerifyProjectExistenceRequest) (*pb.VerifyProjectExistenceResponse, error) {
-	projectName := in.GetProjectName()
-	logger := s.Logger.WithProject(projectName)
-	logger.Info("Verifying project existence")
-	exists, err := db.CheckProjectExistence(s.DB, projectName)
-	if err != nil {
-		logger.Error("Failed to check project existence", zap.Error(err))
-		return nil, err
-	}
-	logger.Info("Project existence check completed")
-	return &pb.VerifyProjectExistenceResponse{Exists: exists}, nil
+    pb.UnimplementedMetadataServiceServer
+    DB     *sql.DB
+    Logger *logging.Logger
 }
 
 func (s *GRPCServer) GetCompactionJob(ctx context.Context, req *pb.GetCompactionJobRequest) (*pb.GetCompactionJobResponse, error) {
-	s.Logger.Info("Received GetCompactionJob request", zap.String("project_id", req.GetProjectId()), zap.String("schema_name", req.GetSchemaName()))
+    s.Logger.Info("Received GetCompactionJob request", zap.String("project_id", req.GetProjectId()), zap.String("schema_name", req.GetSchemaName()))
 
-	// TODO: Implement actual logic to fetch a compaction job from the database
-	// For now, return a dummy job
-	return &pb.GetCompactionJobResponse{
-		Job: &pb.CompactionJob{
-			Id:             "dummy-job-id-123",
-			ProjectId:      "project_x",
-			SchemaName:     "schema_a",
-			Status:         "pending",
-			TargetBlockIds: []string{"block1", "block2", "block3"},
-			CreatedAt:      timestamppb.Now(),
-			UpdatedAt:      timestamppb.Now(),
-		},
-	}, nil
+    // 1. Parse Project UUID
+    projectID, err := uuid.Parse(req.GetProjectId())
+    if err != nil {
+        return nil, fmt.Errorf("invalid project ID format: %w", err)
+    }
+
+    projectName, err := db.GetProjectNameByID(s.DB, projectID) // You might need to add this helper to db.go
+    if err != nil {
+         return nil, fmt.Errorf("project not found: %w", err)
+    }
+
+    schemaID, err := db.GetSchemaID(s.DB, projectName, req.GetSchemaName())
+    if err != nil {
+        return nil, fmt.Errorf("schema not found: %w", err)
+    }
+
+    // 3. Get the Job
+    job, err := db.GetPendingCompactionJob(s.DB, projectID, schemaID)
+    if err != nil {
+        return nil, fmt.Errorf("failed to fetch compaction job: %w", err)
+    }
+    if job == nil {
+        // No job found
+        return &pb.GetCompactionJobResponse{}, nil
+    }
+
+    // 4. Map DB Model to Protobuf
+    return &pb.GetCompactionJobResponse{
+        Job: &pb.CompactionJob{
+            Id:             job.ID.String(),
+            ProjectId:      job.ProjectID.String(),
+            SchemaName:     req.GetSchemaName(),
+            Status:         job.Status,
+            TargetBlockIds: job.TargetBlockIDs,
+            CreatedAt:      timestamppb.New(job.CreatedAt),
+            UpdatedAt:      timestamppb.New(job.UpdatedAt),
+        },
+    }, nil
 }
 
 func (s *GRPCServer) UpdateCompactionJobStatus(ctx context.Context, req *pb.UpdateCompactionJobStatusRequest) (*pb.SimpleResponse, error) {
-	s.Logger.Info("Received UpdateCompactionJobStatus request", zap.String("job_id", req.GetJobId()), zap.String("status", req.GetStatus()))
+    s.Logger.Info("Received UpdateCompactionJobStatus request", zap.String("job_id", req.GetJobId()), zap.String("status", req.GetStatus()))
 
-	// TODO: Implement actual logic to update job status in the database
-	// Also handle output_file_path and compacted_block_ids
-	return &pb.SimpleResponse{
-		Success: true,
-		Message: "Compaction job status updated successfully",
-	}, nil
+    jobID, err := uuid.Parse(req.GetJobId())
+    if err != nil {
+        return &pb.SimpleResponse{Success: false, Message: "Invalid Job ID"}, err
+    }
+
+    // Call the real DB function
+    err = db.UpdateCompactionJobStatus(s.DB, jobID, req.GetStatus(), req.GetOutputFilePath(), req.GetCompactedBlockIds())
+    if err != nil {
+        s.Logger.Error("Failed to update compaction job", zap.Error(err))
+        return &pb.SimpleResponse{Success: false, Message: "Failed to update database"}, err
+    }
+
+    return &pb.SimpleResponse{
+        Success: true,
+        Message: "Compaction job status updated successfully",
+    }, nil
 }
 
 func (s *GRPCServer) RegisterBlock(ctx context.Context, req *pb.RegisterBlockRequest) (*pb.SimpleResponse, error) {
-	s.Logger.Info("Received RegisterBlock request", zap.String("block_id", req.GetBlockId()), zap.String("project_id", req.GetProjectId()))
+    s.Logger.Info("Received RegisterBlock request", zap.String("block_id", req.GetBlockId()))
 
-	// TODO: Implement actual logic to store block metadata in the database
-	// Use s.DB to interact with the data_files table
-	return &pb.SimpleResponse{
-		Success: true,
-		Message: "Block registered successfully",
-	}, nil
+    // 1. Parse IDs
+    projectID, err := uuid.Parse(req.GetProjectId())
+    if err != nil {
+        return nil, fmt.Errorf("invalid project ID: %w", err)
+    }
+    
+    // Helper needed: Get ProjectName from ID to lookup SchemaID
+    projectName, err := db.GetProjectNameByID(s.DB, projectID) 
+    if err != nil { return nil, err }
+
+    schemaID, err := db.GetSchemaID(s.DB, projectName, req.GetSchemaName())
+    if err != nil {
+        return nil, fmt.Errorf("schema lookup failed: %w", err)
+    }
+
+    // 2. Create Block Model
+    block := models.Block{
+        BlockID:  req.GetBlockId(),
+        WorkerID: req.GetWorkerId(),
+        Path:     req.GetPath(),
+        Size:     req.GetSize(),
+        Format:   "parquet", // Or pass this in request if dynamic
+    }
+
+    // 3. Store in DB
+    err = db.RegisterBlock(s.DB, projectID, schemaID, block)
+    if err != nil {
+        s.Logger.Error("Failed to register block", zap.Error(err))
+        return &pb.SimpleResponse{Success: false, Message: "Database error"}, err
+    }
+
+    return &pb.SimpleResponse{
+        Success: true,
+        Message: "Block registered successfully",
+    }, nil
 }
 
 func (s *GRPCServer) GetBlockLocations(ctx context.Context, req *pb.GetBlockLocationsRequest) (*pb.GetBlockLocationsResponse, error) {
-	s.Logger.Info("Received GetBlockLocations request", zap.Strings("block_ids", req.GetBlockIds()))
+    // 1. Get from DB
+    dbLocations, err := db.GetBlockLocations(s.DB, req.GetBlockIds())
+    if err != nil {
+        return nil, fmt.Errorf("failed to fetch locations: %w", err)
+    }
 
-	// TODO: Implement actual logic to fetch block locations from the database
-	// For now, return dummy locations
-	locations := make([]*pb.BlockLocation, len(req.GetBlockIds()))
-	for i, blockID := range req.GetBlockIds() {
-		locations[i] = &pb.BlockLocation{
-			BlockId:  blockID,
-			WorkerId: "dummy-worker-id-1",
-			Path:     "/data/" + blockID + ".bin",
-		}
-	}
+    // 2. Map to Protobuf
+    pbLocations := make([]*pb.MetadataBlockLocation, len(dbLocations))
+    for i, loc := range dbLocations {
+        pbLocations[i] = &pb.MetadataBlockLocation{
+            BlockId:  loc.BlockID,
+            WorkerId: loc.WorkerID,
+            Path:     loc.Path,
+        }
+    }
 
-	return &pb.GetBlockLocationsResponse{
-		Locations: locations,
-	}, nil
+    return &pb.GetBlockLocationsResponse{
+        Locations: pbLocations,
+    }, nil
 }

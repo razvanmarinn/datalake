@@ -194,4 +194,3 @@ func (c *Compactor) streamAvroToParquet(data []byte, pw *writer.JSONWriter) erro
 	}
 	return nil
 }
-

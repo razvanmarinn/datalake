@@ -2,14 +2,15 @@ package db
 
 import (
 	"database/sql"
-	"fmt"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/lib/pq" // Add this import
+	"github.com/lib/pq"
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"go.uber.org/zap"
 
@@ -17,8 +18,6 @@ import (
 
 	_ "github.com/lib/pq"
 )
-
-// ... [GetDBConfig and getEnv remain unchanged] ...
 
 func GetDBConfig() (string, int, string, string, string) {
 	host := getEnv("DB_HOST", "localhost")
@@ -43,8 +42,6 @@ func getEnv(key, defaultValue string) string {
 }
 
 func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
-	// ... [Connection logic remains unchanged] ...
-    // Note: Ensure your 'sql/create_tables.sql' contains the new table definitions above!
 	host, port, user, password, dbname := GetDBConfig()
 
 	defaultConnStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
@@ -88,7 +85,7 @@ func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not ping target database: %v", err)
 	}
 
-    // IMPORTANT: This SQL file must create the schemas, avro_schemas, and parquet_schemas tables
+	// IMPORTANT: This SQL file must create the schemas, avro_schemas, and parquet_schemas tables
 	sqlFilePath := getEnv("SQL_PATH", "./sql/create_tables.sql")
 	sqlBytes, err := ioutil.ReadFile(sqlFilePath)
 	if err != nil {
@@ -104,7 +101,6 @@ func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
 	return db, nil
 }
 
-// CreateSchema inserts Version 1 of a new schema into all 3 tables
 func CreateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -144,7 +140,6 @@ func CreateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 	return tx.Commit()
 }
 
-// GetSchema joins the three tables to return the LATEST version
 func GetSchema(db *sql.DB, projectName, schemaName string) (*models.SchemaWithDetails, error) {
 	query := `
 		SELECT 
@@ -170,7 +165,6 @@ func GetSchema(db *sql.DB, projectName, schemaName string) (*models.SchemaWithDe
 	return &s, nil
 }
 
-// UpdateSchema increments the version and inserts a new row
 func UpdateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -226,7 +220,7 @@ func UpdateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 
 // ListSchemas returns the latest version of every schema in a project
 func ListSchemas(db *sql.DB, projectName string) ([]models.SchemaWithDetails, error) {
-    // This distinct on logic gets the latest version for each schema name
+	// This distinct on logic gets the latest version for each schema name
 	query := `
 		SELECT DISTINCT ON (s.name)
 			s.id, s.project_name, s.name, s.version, 
@@ -255,67 +249,66 @@ func ListSchemas(db *sql.DB, projectName string) ([]models.SchemaWithDetails, er
 	return schemas, nil
 }
 
-// ... [RegisterProject, GetProjects, etc. remain unchanged] ...
 func RegisterProject(db *sql.DB, project *models.ProjectMetadata) error {
-    query := `INSERT INTO project (name, description, owner_id) VALUES ($1, $2, $3)`
-    _, err := db.Exec(query, project.ProjectName, project.Description, project.Owner)
-    if err != nil {
-        return fmt.Errorf("error inserting project: %v", err)
-    }
-    return nil
+	query := `INSERT INTO project (name, description, owner_id) VALUES ($1, $2, $3)`
+	_, err := db.Exec(query, project.ProjectName, project.Description, project.Owner)
+	if err != nil {
+		return fmt.Errorf("error inserting project: %v", err)
+	}
+	return nil
 }
 
 func GetProjects(db *sql.DB, owner_id string) (map[string]uuid.UUID, error) {
-    query := `SELECT name, owner_id FROM project WHERE owner_id = $1`
-    rows, err := db.Query(query, owner_id)
-    if err != nil {
-        return nil, fmt.Errorf("error querying projects: %v", err)
-    }
-    defer rows.Close()
+	query := `SELECT name, owner_id FROM project WHERE owner_id = $1`
+	rows, err := db.Query(query, owner_id)
+	if err != nil {
+		return nil, fmt.Errorf("error querying projects: %v", err)
+	}
+	defer rows.Close()
 
-    projects := make(map[string]uuid.UUID)
-    for rows.Next() {
-        var name, idStr string
-        if err := rows.Scan(&name, &idStr); err != nil {
-            return nil, fmt.Errorf("error scanning project: %v", err)
-        }
-        id, err := uuid.Parse(idStr)
-        if err != nil {
-            return nil, fmt.Errorf("invalid UUID: %v", err)
-        }
-        projects[name] = id
-    }
-    return projects, nil
+	projects := make(map[string]uuid.UUID)
+	for rows.Next() {
+		var name, idStr string
+		if err := rows.Scan(&name, &idStr); err != nil {
+			return nil, fmt.Errorf("error scanning project: %v", err)
+		}
+		id, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid UUID: %v", err)
+		}
+		projects[name] = id
+	}
+	return projects, nil
 }
 
 func CheckProjectExistence(db *sql.DB, projectName string) (bool, error) {
-    var exists bool
-    err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM project WHERE name = $1)", projectName).Scan(&exists)
-    return exists, err
+	var exists bool
+	err := db.QueryRow("SELECT EXISTS(SELECT 1 FROM project WHERE name = $1)", projectName).Scan(&exists)
+	return exists, err
 }
 
 func GetProjectOwnerID(db *sql.DB, projectName string) (string, error) {
-    var ownerID string
-    err := db.QueryRow("SELECT owner_id FROM project WHERE name = $1", projectName).Scan(&ownerID)
-    return ownerID, err
+	var ownerID string
+	err := db.QueryRow("SELECT owner_id FROM project WHERE name = $1", projectName).Scan(&ownerID)
+	return ownerID, err
 }
 
 func GetProjectID(db *sql.DB, projectName string) (uuid.UUID, error) {
-    var projectID uuid.UUID
-    err := db.QueryRow("SELECT id FROM project WHERE name = $1", projectName).Scan(&projectID)
-    if err != nil {
-        return uuid.Nil, fmt.Errorf("failed to get project ID for %s: %w", projectName, err)
-    }
-    return projectID, nil
+	var projectID uuid.UUID
+	err := db.QueryRow("SELECT id FROM project WHERE name = $1", projectName).Scan(&projectID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to get project ID for %s: %w", projectName, err)
+	}
+	return projectID, nil
 }
 
 func GetSchemaID(db *sql.DB, projectName, schemaName string) (int, error) {
-    var schemaID int
-    err := db.QueryRow("SELECT id FROM schemas WHERE project_name = $1 AND name = $2 ORDER BY version DESC LIMIT 1", projectName, schemaName).Scan(&schemaID)
-    if err != nil {
-        return 0, fmt.Errorf("failed to get schema ID for project %s, schema %s: %w", projectName, schemaName, err)
-    }
-    return schemaID, nil
+	var schemaID int
+	err := db.QueryRow("SELECT id FROM schemas WHERE project_name = $1 AND name = $2 ORDER BY version DESC LIMIT 1", projectName, schemaName).Scan(&schemaID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get schema ID for project %s, schema %s: %w", projectName, schemaName, err)
+	}
+	return schemaID, nil
 }
 
 // RegisterBlock inserts a new data file record
@@ -348,7 +341,6 @@ func GetBlockLocations(db *sql.DB, blockIDs []string) ([]models.BlockLocation, e
 	return locations, nil
 }
 
-// CreateCompactionJob creates a new compaction job
 func CreateCompactionJob(db *sql.DB, projectID uuid.UUID, schemaID int, targetBlockIDs []string) (*models.CompactionJob, error) {
 	job := &models.CompactionJob{
 		ID:             uuid.New(),
@@ -368,7 +360,6 @@ func CreateCompactionJob(db *sql.DB, projectID uuid.UUID, schemaID int, targetBl
 	return job, nil
 }
 
-// GetPendingCompactionJob retrieves a pending compaction job for a given project and schema
 func GetPendingCompactionJob(db *sql.DB, projectID uuid.UUID, schemaID int) (*models.CompactionJob, error) {
 	query := `SELECT id, project_id, schema_id, status, target_block_ids, output_file_path, created_at, updated_at FROM compaction_jobs WHERE project_id = $1 AND schema_id = $2 AND status = 'pending' LIMIT 1`
 	row := db.QueryRow(query, projectID, schemaID)
@@ -391,7 +382,6 @@ func GetPendingCompactionJob(db *sql.DB, projectID uuid.UUID, schemaID int) (*mo
 	return job, nil
 }
 
-// UpdateCompactionJobStatus updates the status of a compaction job
 func UpdateCompactionJobStatus(db *sql.DB, jobID uuid.UUID, status, outputFilePath string, compactedBlockIDs []string) error {
 	query := `UPDATE compaction_jobs SET status = $1, output_file_path = $2, target_block_ids = $3, updated_at = $4 WHERE id = $5`
 	_, err := db.Exec(query, status, outputFilePath, pq.Array(compactedBlockIDs), time.Now(), jobID)
@@ -401,7 +391,6 @@ func UpdateCompactionJobStatus(db *sql.DB, jobID uuid.UUID, status, outputFilePa
 	return nil
 }
 
-// GetUncompactedFileStats retrieves the number of uncompacted files for each project and schema
 func GetUncompactedFileStats(db *sql.DB) ([]models.UncompactedFileStat, error) {
 	query := `
 		SELECT project_id, schema_id, COUNT(*) as file_count
@@ -449,4 +438,13 @@ func GetUncompactedBlockIDs(db *sql.DB, projectID uuid.UUID, schemaID, limit int
 		blockIDs = append(blockIDs, blockID)
 	}
 	return blockIDs, nil
+}
+
+func GetProjectNameByID(db *sql.DB, projectID uuid.UUID) (string, error) {
+	var name string
+	err := db.QueryRow("SELECT name FROM project WHERE id = $1", projectID).Scan(&name)
+	if err != nil {
+		return "", fmt.Errorf("failed to find project name for id %s: %w", projectID, err)
+	}
+	return name, nil
 }

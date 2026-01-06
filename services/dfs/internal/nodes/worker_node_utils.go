@@ -12,7 +12,6 @@ import (
 
 func (wn *WorkerNode) Start() {
 	fmt.Println("WorkerNode started")
-	wn.CreateIfStorageFolderDoesntExist()
 }
 
 func (wn *WorkerNode) Stop() {
@@ -21,24 +20,30 @@ func (wn *WorkerNode) Stop() {
 func (wn *WorkerNode) HealthCheck() bool {
 	return true
 }
+func (w *WorkerNode) saveBlock(blockID string, data []byte) error {
+	storageDir := "/data"
 
 
 
+	filePath := filepath.Join(storageDir, fmt.Sprintf("%s.bin", blockID))
+
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write block file: %w", err)
+	}
+
+	return nil
+}
 func (w *WorkerNode) StoreBlock(ctx context.Context, req *pb.StoreBlockRequest) (*pb.WorkerResponse, error) {
 
 	blockID := req.BlockId
 
 	log.Printf("Received StoreBlock request for block ID: %s, Project: %s, Schema: %s", blockID, req.ProjectId, req.SchemaName)
 
-
-
 	w.lock.Lock()
 
 	w.StoredBlocks[blockID] = req.Data
 
 	w.lock.Unlock()
-
-
 
 	err := w.saveBlock(blockID, req.Data)
 
@@ -50,23 +55,16 @@ func (w *WorkerNode) StoreBlock(ctx context.Context, req *pb.StoreBlockRequest) 
 
 	}
 
-
-
 	log.Printf("Successfully stored block ID: %s, Data length: %d", blockID, len(req.Data))
-
-
 
 	return &pb.WorkerResponse{
 
-		Success: true,
+			Success: true,
+		},
 
-	},
-
-	nil
+		nil
 
 }
-
-
 
 func (w *WorkerNode) GetBlock(ctx context.Context, req *pb.GetBlockRequest) (*pb.GetBlockResponse, error) {
 
@@ -74,15 +72,11 @@ func (w *WorkerNode) GetBlock(ctx context.Context, req *pb.GetBlockRequest) (*pb
 
 	log.Printf("Received GetBlock request for block ID: %s", blockID)
 
-
-
 	w.lock.Lock()
 
 	blockData, exists := w.StoredBlocks[blockID]
 
 	w.lock.Unlock()
-
-
 
 	if !exists {
 
@@ -100,24 +94,19 @@ func (w *WorkerNode) GetBlock(ctx context.Context, req *pb.GetBlockRequest) (*pb
 
 		blockData = data
 
+		w.lock.Lock()
 
+		w.StoredBlocks[blockID] = blockData
 
-		wn.lock.Lock()
-
-		wn.StoredBlocks[blockID] = blockData
-
-		wn.lock.Unlock()
+		w.lock.Unlock()
 
 	}
 
-
-
 	return &pb.GetBlockResponse{
 
-		Data: blockData,
+			Data: blockData,
+		},
 
-	},
-
-	nil
+		nil
 
 }

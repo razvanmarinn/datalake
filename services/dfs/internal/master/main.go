@@ -33,22 +33,22 @@ type server struct {
 
 func (s *server) RegisterFile(ctx context.Context, in *pb.ClientFileRequestToMaster) (*pb.MasterFileResponse, error) {
 	inode := s.masterNode.RegisterFile(in)
-	
-	s.logger.Info("File registered successfully", 
-		zap.String("file_name", inode.Name), 
+
+	s.logger.Info("File registered successfully",
+		zap.String("file_name", inode.Name),
 		zap.String("file_id", inode.ID))
 
 	return &pb.MasterFileResponse{Success: true}, nil
 }
 
-func (s *server) GetBatchDestination(ctx context.Context, in *pb.ClientBatchRequestToMaster) (*pb.MasterResponse, error) {
-	s.logger.Info("Received GetBatchDestination request for batch", zap.String("batch_id", in.GetBatchId()))
+func (s *server) GetBatchDestination(ctx context.Context, in *pb.ClientBlockRequestToMaster) (*pb.MasterResponse, error) {
+	s.logger.Info("Received GetBatchDestination request for batch", zap.String("batch_id", in.GetBlockId()))
 
 	wid, wm := s.masterNode.LoadBalancer.GetNextClient()
-	
-	blockUUID, err := uuid.Parse(in.GetBatchId())
+
+	blockUUID, err := uuid.Parse(in.GetBlockId())
 	if err != nil {
-		s.logger.Error("Invalid batch ID format", zap.String("batch_id", in.GetBatchId()), zap.Error(err))
+		s.logger.Error("Invalid block ID format", zap.String("block_id", in.GetBlockId()), zap.Error(err))
 		return nil, err
 	}
 
@@ -71,7 +71,7 @@ func (s *server) GetMetadata(ctx context.Context, in *pb.Location) (*pb.MasterMe
 		batchIds[i] = id.String()
 	}
 
-	batchLocations := make(map[string]*pb.BatchLocation)
+	batchLocations := make(map[string]*pb.BlockLocation)
 
 	for _, bId := range blockUUIDs {
 		workerNodeUUIDs := s.masterNode.GetBatchLocations(bId)
@@ -86,25 +86,24 @@ func (s *server) GetMetadata(ctx context.Context, in *pb.Location) (*pb.MasterMe
 			address := fmt.Sprintf("%s:%d", ip, port)
 			workerAddresses = append(workerAddresses, address)
 		}
-		
-		batchLocations[bId.String()] = &pb.BatchLocation{
+
+		batchLocations[bId.String()] = &pb.BlockLocation{
 			WorkerIds: workerAddresses,
 		}
 	}
 
 	return &pb.MasterMetadataResponse{
-		BatchIds:       batchIds,
-		BatchLocations: batchLocations,
+		BlockIds:       batchIds,
+		BlockLocations: batchLocations,
 	}, nil
 }
 
 func (s *server) GetFileListForProject(ctx context.Context, in *pb.ApiRequestForFileList) (*pb.FileListResponse, error) {
 	log.Printf("GetFileListForProject called with OwnerID=%s, ProjectID=%s", in.OwnerId, in.ProjectId)
 
-	s.masterNode.Lock() // Assuming you exported the lock or added a Lock/Unlock method. 
+	s.masterNode.Lock() // Assuming you exported the lock or added a Lock/Unlock method.
 
 	fileList := make([]string, 0)
-
 
 	for _, inode := range s.masterNode.Namespace {
 		if inode.OwnerID == in.OwnerId && inode.ProjectID == in.ProjectId {
@@ -116,15 +115,13 @@ func (s *server) GetFileListForProject(ctx context.Context, in *pb.ApiRequestFor
 	return &pb.FileListResponse{FileListNames: fileList}, nil
 }
 
-
-
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.SetOutput(os.Stdout)
 
 	logger := logging.NewDefaultLogger("master_node")
 	defer logger.Sync()
-	
+
 	state := nodes.NewMasterNodeState()
 	masterNode := nodes.GetMasterNodeInstance()
 
@@ -163,7 +160,7 @@ func main() {
 		logger.Info("Shutting down master node and gRPC server")
 
 		state.UpdateState(masterNode)
-		
+
 		if err := state.SaveState(); err != nil {
 			logger.Error("Failed to save master node state", zap.Error(err))
 		}

@@ -91,7 +91,6 @@ func (mb *MessageBatch) AddMessage(key, value []byte, ownerId, projectId string,
 func (mb *MessageBatch) Size() int {
 	return len(mb.Messages)
 }
-
 func (mb *MessageBatch) GetMessagesAsAvroBytes(schema *Schema) ([]byte, error) {
 	if mb.Size() == 0 {
 		return nil, fmt.Errorf("cannot convert empty batch")
@@ -110,7 +109,8 @@ func (mb *MessageBatch) GetMessagesAsAvroBytes(schema *Schema) ([]byte, error) {
 
 	var records []interface{}
 	for _, msg := range mb.Messages {
-		records = append(records, msg.Data)
+		cleanData := normalizeValue(msg.Data)
+		records = append(records, cleanData)
 	}
 
 	if err := ocfw.Append(records); err != nil {
@@ -120,9 +120,35 @@ func (mb *MessageBatch) GetMessagesAsAvroBytes(schema *Schema) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+func normalizeValue(v interface{}) interface{} {
+	switch v := v.(type) {
+	case json.Number:
+		if i, err := v.Int64(); err == nil {
+			return i
+		}
+		if f, err := v.Float64(); err == nil {
+			return f
+		}
+		return v.String()
+	case map[string]interface{}:
+		newMap := make(map[string]interface{}, len(v))
+		for k, val := range v {
+			newMap[k] = normalizeValue(val)
+		}
+		return newMap
+	case []interface{}:
+		newSlice := make([]interface{}, len(v))
+		for i, val := range v {
+			newSlice[i] = normalizeValue(val)
+		}
+		return newSlice
+	}
+	return v
+}
+
 func UnmarshalMessage(value []byte) (map[string]interface{}, error) {
 	decoder := json.NewDecoder(bytes.NewReader(value))
-	decoder.UseNumber()
+	decoder.UseNumber() 
 
 	var wrapper map[string]interface{}
 	if err := decoder.Decode(&wrapper); err != nil {

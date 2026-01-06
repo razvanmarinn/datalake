@@ -82,9 +82,9 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
 		ProjectId:  batch.Messages[0].ProjectId,
 		FileFormat: "avro",
 		FileSize:   int64(len(avroBytes)),
-		BatchInfo: &pb.Batches{
-			Batches: []*pb.Batch{
-				{Uuid: batch.UUID.String(), Size: int32(len(avroBytes))},
+		BlockInfo: &pb.BlockList{
+			Blocks: []*pb.BlockInfo{
+				{Uuid: batch.UUID.String(), Size: int64(len(avroBytes))},
 			},
 		},
 	})
@@ -92,9 +92,9 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
 		return fmt.Errorf("master register failed: %w", err)
 	}
 
-	dest, err := masterClient.GetBatchDestination(ctx, &pb.ClientBatchRequestToMaster{
-		BatchId:   batch.UUID.String(),
-		BatchSize: int32(len(batch.Messages)),
+	dest, err := masterClient.GetBatchDestination(ctx, &pb.ClientBlockRequestToMaster{
+		BlockId:   batch.UUID.String(),
+		BlockSize: int64(len(batch.Messages)),
 	})
 	if err != nil {
 		return fmt.Errorf("destination lookup failed: %w", err)
@@ -117,10 +117,10 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
 	return err
 }
 
-func (app *App) consumeUntilChange(ctx context.Context, currentTopics []string) {
+func (app *App)  consumeUntilChange(ctx context.Context, currentTopics []string) {
 	consumerMu.Lock()
 	defer consumerMu.Unlock()
-
+  
 	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers":               app.Config.KafkaBrokers[0],
 		"group.id":                        app.Config.KafkaGroupID + "-v2",
