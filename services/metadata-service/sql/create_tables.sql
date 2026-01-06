@@ -1,9 +1,22 @@
 CREATE TABLE IF NOT EXISTS schemas (
     id SERIAL PRIMARY KEY,
-    project_name VARCHAR(100) NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    fields JSONB NOT NULL,
-    version INT NOT NULL
+    project_name TEXT NOT NULL,
+    name TEXT NOT NULL,
+    version INT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE (project_name, name, version)
+);
+
+CREATE TABLE IF NOT EXISTS avro_schemas (
+    id SERIAL PRIMARY KEY,
+    schema_id INT NOT NULL REFERENCES schemas(id) ON DELETE CASCADE,
+    definition TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS parquet_schemas (
+    id SERIAL PRIMARY KEY,
+    schema_id INT NOT NULL REFERENCES schemas(id) ON DELETE CASCADE,
+    definition TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS history_schemas (

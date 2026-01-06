@@ -53,11 +53,9 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
 		return nil
 	}
 
-	// FIX: Extract ProjectId from the first message in the batch
 	projectId := batch.Messages[0].ProjectId
-	key := string(batch.Messages[0].Key)
+	key := string(batch.Messages[0].Key) // schema name
 
-	// FIX: Pass projectId as the second argument
 	schema, err := app.fetchSchema(ctx, projectId, key)
 	if err != nil {
 		return err
@@ -74,7 +72,10 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
 	}
 	masterClient := pb.NewMasterServiceClient(masterConn)
 
-	fileName := fmt.Sprintf("%s_%s.avro", batch.Topic, time.Now().Format("20060102150405"))
+	fileName := fmt.Sprintf("%s_%s_%s.avro", projectId, key, time.Now().Format("20060102150405"))
+
+	app.Logger.Info("registering file with master", "file", fileName, "batches", 1)
+	
 	_, err = masterClient.RegisterFile(ctx, &pb.ClientFileRequestToMaster{
 		FileName:   fileName,
 		OwnerId:    batch.Messages[0].OwnerId,

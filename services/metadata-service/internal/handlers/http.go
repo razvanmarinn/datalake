@@ -39,6 +39,7 @@ func SetupRouter(database *sql.DB, logger *logging.Logger, prov *kafka.Provision
 		// --- Schema Management ---
 		auth.POST("/:project_name/schema", helpers.CreateSchema(database, logger, prov))
 		auth.PUT("/:project_name/schema", helpers.UpdateSchema(database, logger))
+		auth.GET("/:project_name/schemas", helpers.ListSchemas(database, logger))
 	}
 
 	return r

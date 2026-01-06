@@ -3,6 +3,7 @@ package helpers
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -16,8 +17,24 @@ import (
 
 type CreateSchemaBody struct {
 	SchemaName string         `json:"schema_name" binding:"required"`
-	Fields     []models.Field `json:"fields" binding:"required"`
 	Type       string         `json:"type" binding:"required"`
+	AvroFields []models.Field `json:"avro_fields" binding:"required"`
+	ParquetDef string         `json:"parquet_definition" binding:"required"`
+}
+
+func generateAvroSchema(name, namespace string, fields []models.Field) (string, error) {
+	schemaMap := map[string]interface{}{
+		"type":      "record",
+		"name":      name,
+		"namespace": namespace,
+		"fields":    fields,
+	}
+
+	bytes, err := json.Marshal(schemaMap)
+	if err != nil {
+		return "", err
+	}
+	return string(bytes), nil
 }
 
 func CreateSchema(database *sql.DB, logger *logging.Logger, prov *kafka.Provisioner) gin.HandlerFunc {
@@ -30,11 +47,19 @@ func CreateSchema(database *sql.DB, logger *logging.Logger, prov *kafka.Provisio
 			return
 		}
 
-		schema := models.Schema{
-			ProjectName: projectName,
-			Name:        body.SchemaName,
-			Fields:      body.Fields,
-			Version:     1,
+		avroJSON, err := generateAvroSchema(body.SchemaName, "org."+projectName, body.AvroFields)
+		if err != nil {
+			logger.WithContext(c).Error("Failed to generate Avro JSON", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid Avro fields"})
+			return
+		}
+
+		schema := models.SchemaWithDetails{
+			ProjectName:   projectName,
+			Name:          body.SchemaName,
+			AvroSchema:    avroJSON,
+			ParquetSchema: body.ParquetDef,
+			Version:       1,
 		}
 
 		if err := db.CreateSchema(database, schema); err != nil {
@@ -43,7 +68,6 @@ func CreateSchema(database *sql.DB, logger *logging.Logger, prov *kafka.Provisio
 			return
 		}
 
-		// Background provisioning
 		if prov != nil {
 			go func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -63,7 +87,6 @@ func GetSchema(database *sql.DB, logger *logging.Logger) gin.HandlerFunc {
 		projectName := c.Param("project_name")
 		schemaName := c.Param("schema_name")
 
-		// Retrieve from DB
 		schema, err := db.GetSchema(database, projectName, schemaName)
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -90,19 +113,62 @@ func UpdateSchema(database *sql.DB, logger *logging.Logger) gin.HandlerFunc {
 
 		if err := c.ShouldBindJSON(&body); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
 		}
 
-		schema := models.Schema{
-			ProjectName: projectName,
-			Name:        body.SchemaName,
-			Fields:      body.Fields,
-		}
-
-		err := db.UpdateSchema(database, schema)
+		avroJSON, err := generateAvroSchema(body.SchemaName, "org."+projectName, body.AvroFields)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update schema"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Avro fields"})
+			return
 		}
+
+		schema := models.SchemaWithDetails{
+			ProjectName:   projectName,
+			Name:          body.SchemaName,
+			AvroSchema:    avroJSON,
+			ParquetSchema: body.ParquetDef,
+		}
+
+		err = db.UpdateSchema(database, schema)
+		if err != nil {
+			logger.WithContext(c).Error("Failed to update schema", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update schema"})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{"message": "Schema updated successfully"})
-		logger.WithContext(c).Info("Schema updated", zap.String("project", projectName), zap.String("schema", body.SchemaName))
+		logger.WithContext(c).Info("Schema updated",
+			zap.String("project", projectName),
+			zap.String("schema", body.SchemaName))
+	}
+}
+
+func ListSchemas(database *sql.DB, logger *logging.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		projectName := c.Param("project_name")
+
+		_, exists := c.Get("userID")
+		if !exists {
+			logger.WithContext(c).Warn("User ID not found in context")
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+
+		_, err := db.GetProjectOwnerID(database, projectName)
+		if err != nil {
+			logger.WithContext(c).Error("Failed to fetch project owner", zap.String("project", projectName), zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify project ownership"})
+			return
+		}
+
+		schemas, err := db.ListSchemas(database, projectName)
+		if err != nil {
+			logger.WithContext(c).Error("Failed to list schemas", zap.Error(err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve schemas"})
+			return
+		}
+
+		logger.WithContext(c).Info("Schemas listed", zap.String("project", projectName))
+		c.JSON(http.StatusOK, schemas)
 	}
 }

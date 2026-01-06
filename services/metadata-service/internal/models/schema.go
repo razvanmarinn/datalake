@@ -1,11 +1,13 @@
 package models
 
-type Schema struct {
-	ID          int     `json:"id"`
-	ProjectName string  `json:"project"`
-	Name        string  `json:"name"`
-	Fields      []Field `json:"fields"`
-	Version     int     `json:"version"`
+
+type SchemaWithDetails struct {
+    ID            int             `json:"id"`
+    ProjectName   string          `json:"project_name"`
+    Name          string          `json:"name"`
+    Version       int             `json:"version"`
+    AvroSchema    string          `json:"avro_schema"`    
+    ParquetSchema string          `json:"parquet_schema"`
 }
 
 type Field struct {
@@ -19,7 +21,7 @@ type ProjectMetadata struct {
 	Description string `json:"description"`
 	Owner       string `json:"owner"`
 	CreatedAt   string `json:"created_at"`
-	Schemas    []Schema `json:"schemas"`
+	Schemas    []SchemaWithDetails `json:"schemas"`
 	SchemaCount int     `json:"schema_count"`
 	KafkaTopic string `json:"kafka_topic"`
 	

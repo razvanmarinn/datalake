@@ -50,4 +50,4 @@ spec:
             - name: MASTER_SERVICE_ADDRESS
               value: master:50055
             - name: WORKER_SERVICE_ADDRESSES
-              value: "worker-1:50051,worker-2:50052,worker-3:50052"
+              value: "worker-1:50051,worker-2:50052,worker-3:50053"

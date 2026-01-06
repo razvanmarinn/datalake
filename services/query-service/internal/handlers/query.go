@@ -2,9 +2,12 @@ package handlers
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/linkedin/goavro/v2"
 	"github.com/razvanmarinn/query_service/internal/grpc"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -110,4 +113,111 @@ func (h *QueryHandler) GetData(c *gin.Context) {
 
 	h.logger.Info("Successfully retrieved all batches for file", zap.String("file_name", fileName))
 	c.Data(http.StatusOK, "application/octet-stream", data.Bytes())
+}
+
+func (h *QueryHandler) GetSchemaData(c *gin.Context) {
+	ownerIdVal, exists := c.Get("userID")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized: missing user ID"})
+		return
+	}
+	ownerId := ownerIdVal.(string)
+
+	projectID := c.Param("project")
+	schemaName := c.Param("schema")
+
+	h.logger.Info("Starting schema data aggregation",
+		zap.String("project", projectID),
+		zap.String("schema", schemaName),
+		zap.String("owner", ownerId),
+	)
+
+	fileListResp, err := h.MasterClient.GetFileListForProject(c.Request.Context(), ownerId, projectID)
+	if err != nil {
+		h.logger.Error("Failed to fetch file list", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch file list"})
+		return
+	}
+
+	var tableData []interface{} 
+
+	for _, fileName := range fileListResp.FileListNames {
+		// Filter: Check if file belongs to the requested schema
+		if !isStackPartOfSchema(fileName, projectID, schemaName) {
+			continue
+		}
+
+		// A. Get Metadata
+		metadata, err := h.MasterClient.GetMetadata(c.Request.Context(), fileName)
+		if err != nil {
+			h.logger.Warn("Skipping file due to metadata error", zap.String("file", fileName), zap.Error(err))
+			continue
+		}
+
+		// B. Retrieve and Assemble File Bytes
+		var fileBuffer bytes.Buffer
+		for _, batchID := range metadata.BatchIds {
+			location, ok := metadata.BatchLocations[batchID]
+			if !ok || len(location.WorkerIds) == 0 {
+				continue
+			}
+
+			workerAddr := location.WorkerIds[0]
+			workerClient, ok := h.WorkerClients[workerAddr]
+			if !ok {
+				continue
+			}
+
+			batch, err := workerClient.RetrieveBatch(c.Request.Context(), batchID)
+			if err != nil {
+				h.logger.Error("Failed to retrieve batch", zap.String("batch", batchID), zap.Error(err))
+				continue
+			}
+			fileBuffer.Write(batch.BatchData)
+		}
+
+		records, err := parseAvroOCF(fileBuffer.Bytes())
+		if err != nil {
+			h.logger.Warn("Failed to parse Avro file", zap.String("file", fileName), zap.Error(err))
+			continue
+		}
+
+		tableData = append(tableData, records...)
+	}
+
+	h.logger.Info("Successfully aggregated schema data",
+		zap.String("schema", schemaName),
+		zap.Int("total_records", len(tableData)),
+	)
+	c.JSON(http.StatusOK, tableData)
+}
+
+func isStackPartOfSchema(filename, projectID string, schema string) bool {
+	expectedPrefix := fmt.Sprintf("%s_%s_", projectID, schema)
+    return strings.HasPrefix(filename, expectedPrefix)
+}
+
+func parseAvroOCF(data []byte) ([]interface{}, error) {
+	reader := bytes.NewReader(data)
+
+	ocfReader, err := goavro.NewOCFReader(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OCF reader: %w", err)
+	}
+
+	var rows []interface{}
+
+	for ocfReader.Scan() {
+		datum, err := ocfReader.Read()
+		if err != nil {
+			return nil, fmt.Errorf("failed to read avro record: %w", err)
+		}
+		rows = append(rows, datum)
+	}
+
+	if err := ocfReader.Err(); err != nil {
+		return nil, fmt.Errorf("error during OCF scan: %w", err)
+	}
+
+	return rows, nil
 }

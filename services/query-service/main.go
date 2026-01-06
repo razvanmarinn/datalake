@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-
 	"os"
 	"strings"
 
@@ -78,6 +77,7 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(otelgin.Middleware("query-service"))
+
 	config := cors.Config{
 		AllowOrigins:     []string{"http://localhost:3001"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -85,20 +85,26 @@ func main() {
 		AllowCredentials: true,
 	}
 	r.Use(cors.New(config))
-	// A health check endpoint
+
+
 	r.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"status": "UP",
-		})
+		c.JSON(200, gin.H{"status": "UP"})
 	})
 
-	// The main query endpoint
+
 	r.GET("/query", queryHandler.GetData)
-	r.GET("/get_file_list/:project", middleware.AuthMiddleware(), queryHandler.GetFileList)
+
+	protected := r.Group("/")
+	protected.Use(middleware.AuthMiddleware())
+	{
+		protected.GET("/get_file_list/:project", queryHandler.GetFileList)
+		protected.GET("/projects/:project/schemas/:schema/data", queryHandler.GetSchemaData)
+	}
 
 	logger.Info("Starting server on port 8086")
 	r.Run(":8086")
 }
+
 func initTracer(ctx context.Context, logger *zap.Logger) func(context.Context) error {
 	conn, err := grpc.DialContext(ctx, "otel-collector.observability.svc.cluster.local:4317", grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -110,7 +116,7 @@ func initTracer(ctx context.Context, logger *zap.Logger) func(context.Context) e
 	}
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
-			semconv.ServiceName("api-gateway"),
+			semconv.ServiceName("query-service"),
 		),
 	)
 	if err != nil {
@@ -122,7 +128,6 @@ func initTracer(ctx context.Context, logger *zap.Logger) func(context.Context) e
 	)
 	otel.SetTracerProvider(tp)
 
-	// ADD THIS: Configure trace propagation
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
 		propagation.Baggage{},

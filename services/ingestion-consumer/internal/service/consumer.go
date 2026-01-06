@@ -20,11 +20,7 @@ type IngestMessageBody struct {
     Data       map[string]interface{} `json:"data"`
 }
 
-/*
-processMessage now consumes *kafka.Message from confluent-kafka-go
-*/
 func (app *App) processMessage(ctx context.Context, m kafka.Message) {
-    // ---- OpenTelemetry context extraction (Kafka headers) ----
     carrier := kafkaHeaderCarrier(m.Headers)
     ctx = propagation.TraceContext{}.Extract(ctx, carrier)
 
@@ -35,27 +31,23 @@ func (app *App) processMessage(ctx context.Context, m kafka.Message) {
     )
     defer span.End()
 
-    // 1. Unmarshal first to get the ProjectId
     var msg IngestMessageBody
     if err := json.Unmarshal(m.Value, &msg); err != nil {
         app.sendToDLT(m, err)
         return
     }
-
-    // Validation: Ensure ProjectId is present before proceeding
     if msg.ProjectId == "" {
         app.sendToDLT(m, fmt.Errorf("missing project_id in message payload"))
         return
     }
 
-    // 2. Pass the extracted ProjectId to fetchSchema
-    schema, err := app.fetchSchema(ctx, msg.ProjectId, string(m.Key))
-    if err != nil {
-        app.sendToDLT(m, err)
-        return
-    }
+    // schema, err := app.fetchSchema(ctx, msg.ProjectId, string(m.Key))
+    // if err != nil {
+    //     app.sendToDLT(m, err)
+    //     return
+    // }
 
-    data, err := batcher.UnmarshalMessage(schema, m.Value)
+    data, err := batcher.UnmarshalMessage(m.Value)
     if err != nil {
         app.sendToDLT(m, err)
         return
@@ -79,18 +71,16 @@ func (app *App) processMessage(ctx context.Context, m kafka.Message) {
 
 
 func (app *App) fetchSchema(ctx context.Context, projectId, key string) (*batcher.Schema, error) {
-    // Composite cache key to ensure uniqueness across projects
     cacheKey := fmt.Sprintf("%s:%s", projectId, key)
 
     if s, found := app.SchemaCache.Get(cacheKey); found {
         return s, nil
     }
 
-    // Updated: Uses projectId in the URL path
     url := fmt.Sprintf(
         "http://%s/%s/schema/%s",
         app.Config.SchemaRegistryHost,
-        projectId, // Dynamic project name
+        projectId, 
         key,
     )
 
@@ -167,9 +157,7 @@ func (app *App) Shutdown() {
     }
 }
 
-/*
-Kafka header carrier for OpenTelemetry propagation
-*/
+
 type kafkaHeaderCarrier []kafka.Header
 
 func (c kafkaHeaderCarrier) Get(key string) string {

@@ -24,24 +24,18 @@ type App struct {
 	Config config.Config
 	Logger *slog.Logger
 
-	// Tracing
 	TracerProvider interface{}
 	Tracer         trace.Tracer
 	HttpClient     *http.Client
-
-	// Kafka
 	DLTProducer *kafka.Producer
 
-	// Infra
 	GrpcConnCache *infra.GRPCConnCache
 
-	// Batching
 	Batcher     *batcher.Batcher
 	BatcherLock sync.Mutex
 	SchemaCache *infra.SchemaCache
 }
 
-// NewApp initializes static dependencies. It DOES NOT start consumption.
 func NewApp(cfg config.Config, logger *slog.Logger) (*App, error) {
 	tp, err := infra.InitTracer(cfg.OtelCollectorAddr, ServiceName)
 	if err != nil {
@@ -70,7 +64,6 @@ func NewApp(cfg config.Config, logger *slog.Logger) (*App, error) {
 	}, nil
 }
 
-// Run is the lifecycle manager.
 func (app *App) Run(ctx context.Context) {
 	app.Logger.Info("entering application run loop")
 
