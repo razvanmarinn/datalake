@@ -12,7 +12,7 @@ spec:
         spec:
           containers:
           - name: compactor
-            image: datalake/compactor:latest
+            image: razvan1y/compactor:latest
             imagePullPolicy: Never
             env:
               - name: STORAGE_ROOT
