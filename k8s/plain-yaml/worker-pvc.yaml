@@ -1,86 +1,122 @@
+# --- GLOBAL STORAGE (For the Compactor) ---
+# This PV/PVC covers the root directory so the compactor can see all workers.
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: worker1-new-state-pv # NEW PV NAME
-  namespace: datalake
+  name: global-data-pv
 spec:
   capacity:
-    storage: 10Gi
+    storage: 15Gi
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
   storageClassName: standard
   hostPath:
-    path: /datalake/worker_data/worker1-new-state # NEW UNIQUE HOST PATH
+    path: /datalake/worker_data
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: worker1-state-pvc # Keep PVC name or change if desired
+  name: global-data-pvc
   namespace: datalake
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
-      storage: 10Gi
-  volumeName: worker1-new-state-pv # BIND TO THE NEW PV
+      storage: 15Gi
+  volumeName: global-data-pv
   storageClassName: standard
+
 ---
+
+# --- WORKER 1 STORAGE ---
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: worker2-new-state-pv # NEW PV NAME
-  namespace: datalake
+  name: worker1-new-state-pv
 spec:
   capacity:
-    storage: 10Gi
+    storage: 5Gi
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
   storageClassName: standard
   hostPath:
-    path: /datalake/worker_data/worker2-new-state # NEW HOST PATH
----
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: worker3-new-state-pv # NEW PV NAME
-  namespace: datalake
-spec:
-  capacity:
-    storage: 10Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: standard
-  hostPath:
-    path: /datalake/worker_data/worker3-new-state # NEW HOST PATH
+    path: /datalake/worker_data/worker1-new-state
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: worker2-state-pvc # Keep PVC name or change if desired
+  name: worker1-state-pvc
   namespace: datalake
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
-      storage: 10Gi
-  volumeName: worker2-new-state-pv # BIND TO THE NEW PV
+      storage: 5Gi
+  volumeName: worker1-new-state-pv
   storageClassName: standard
+
+---
+
+# --- WORKER 2 STORAGE ---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: worker2-new-state-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+  hostPath:
+    path: /datalake/worker_data/worker2-new-state
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: worker3-state-pvc # Keep PVC name or change if desired
+  name: worker2-state-pvc
   namespace: datalake
 spec:
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   resources:
     requests:
-      storage: 10Gi
-  volumeName: worker3-new-state-pv # BIND TO THE NEW PV
+      storage: 5Gi
+  volumeName: worker2-new-state-pv
+  storageClassName: standard
+
+---
+
+# --- WORKER 3 STORAGE ---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: worker3-new-state-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: standard
+  hostPath:
+    path: /datalake/worker_data/worker3-new-state
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: worker3-state-pvc
+  namespace: datalake
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  volumeName: worker3-new-state-pv
   storageClassName: standard

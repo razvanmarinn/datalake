@@ -6,26 +6,24 @@ metadata:
 spec:
   schedule: "*/10 * * * *"
   concurrencyPolicy: Forbid
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 1
   jobTemplate:
     spec:
       template:
         spec:
           containers:
           - name: compactor
-            image: your-registry/compactor:latest
-            imagePullPolicy: Always
+            image: datalake/compactor:latest
+            imagePullPolicy: Never
             env:
               - name: STORAGE_ROOT
-                value: "/mnt/dfs/data"
-              - name: SCHEMA_API_HOST
-                value: "metadata-service.datalake.svc.cluster.local:8080"
+                value: "/data"
+              - name: SCHEMA_API_URL
+                value: "http://metadata-service.datalake.svc.cluster.local:8080"
             volumeMounts:
               - name: dfs-storage
-                mountPath: /mnt/dfs/data
+                mountPath: /data
           restartPolicy: OnFailure
           volumes:
             - name: dfs-storage
               persistentVolumeClaim:
-                claimName: dfs-pvc-name
+                claimName: global-data-pvc

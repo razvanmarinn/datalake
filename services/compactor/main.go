@@ -9,43 +9,59 @@ import (
 )
 
 func main() {
-	storageRoot := os.Getenv("STORAGE_ROOT")
+	storageRoot := os.Getenv("STORAGE_ROOT") // This is /data (pointing to /datalake/worker_data)
 	if storageRoot == "" {
 		storageRoot = "./data"
 	}
 
 	compactor := compactormanager.NewCompactor(compactormanager.Config{
 		StorageRoot: storageRoot,
-		SchemaAPI:   "http://your-internal-api",
+		SchemaAPI:   os.Getenv("SCHEMA_API_URL"), // e.g. http://metadata-service:8080
 	})
 
-	projects, err := os.ReadDir(storageRoot)
+	workers, err := os.ReadDir(storageRoot)
 	if err != nil {
 		log.Fatalf("Cannot read storage root: %v", err)
 	}
 
-	for _, p := range projects {
-		if !p.IsDir() {
+	for _, w := range workers {
+		if !w.IsDir() {
 			continue
 		}
-		projectPath := filepath.Join(storageRoot, p.Name())
+		workerPath := filepath.Join(storageRoot, w.Name())
 
-		schemas, err := os.ReadDir(projectPath)
+		projects, err := os.ReadDir(workerPath)
 		if err != nil {
+			log.Printf("Skipping worker dir %s: %v", w.Name(), err)
 			continue
 		}
 
-		for _, s := range schemas {
-			if !s.IsDir() {
+		for _, p := range projects {
+			if !p.IsDir() {
+				continue
+			}
+			projectPath := filepath.Join(workerPath, p.Name())
+
+			schemas, err := os.ReadDir(projectPath)
+			if err != nil {
 				continue
 			}
 
-			log.Printf("Processing Project: %s, Schema: %s", p.Name(), s.Name())
+			for _, s := range schemas {
+				if !s.IsDir() || s.Name() == "compacted" {
+					continue
+				}
 
-			err := compactor.Compact(p.Name(), s.Name())
-			if err != nil {
-				log.Printf("Failed to compact %s/%s: %v", p.Name(), s.Name(), err)
+				log.Printf("Found Target -> Worker: %s, Project: %s, Schema: %s", w.Name(), p.Name(), s.Name())
+
+				relativeProjectPath := filepath.Join(w.Name(), p.Name())
+
+				err := compactor.Compact(relativeProjectPath, s.Name())
+				if err != nil {
+					log.Printf("❌ Failed to compact %s/%s in %s: %v", p.Name(), s.Name(), w.Name(), err)
+				}
 			}
 		}
 	}
+	log.Println("✅ Compaction cycle finished.")
 }

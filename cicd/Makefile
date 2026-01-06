@@ -12,7 +12,8 @@ SERVICE_MAPPINGS = \
 	services/identity:identity-service.yaml:identity-service \
 	services/metadata-service:metadata-deployment.yml:metadata-service \
 	services/streaming-ingestion:stream_ingest.yml:streaming-ingestion \
-	services/query-service:query-service.yml:query-service
+	services/query-service:query-service.yml:query-service \
+	services/compactor:compactor-cronjob.yaml:compactor \
 
 export DOCKER_BUILDKIT=1
 
@@ -38,6 +39,13 @@ deploy-master:
 	kubectl set image deployment/master master=$(REGISTRY)/dfs-master:latest -n $(NAMESPACE)
 	kubectl rollout restart deployment/master -n $(NAMESPACE)
 	@echo "✅ dfs-master deployed successfully!"
+
+deploy-cronjob:
+	docker build -t datalake/compactor:latest -f ../services/compactor/Dockerfile ..
+	docker tag datalake/compactor:latest $(REGISTRY)/compactor:latest
+	docker push $(REGISTRY)/compactor:latest
+	kubectl apply -f $(K8S_DIR)/compactor-cronjob.yaml -n $(NAMESPACE)
+	kubectl set image cronjob/avro-parquet-compactor compactor=$(REGISTRY)/compactor:latest -n $(NAMESPACE)
 
 deploy:
 	@if [ -z "$(SERVICE)" ]; then \

@@ -54,13 +54,35 @@ func GetProjectsByUser(database *sql.DB, logger *logging.Logger, idClient pb.Ide
 	}
 }
 
-func RegisterProject(database *sql.DB, logger *logging.Logger) gin.HandlerFunc {
+func RegisterProject(database *sql.DB, logger *logging.Logger, idClient pb.IdentityServiceClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		authID, _ := c.Get("userID")
+
 		var project models.ProjectMetadata
 		if err := c.ShouldBindJSON(&project); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid project data: " + err.Error()})
 			return
 		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		userResp, err := idClient.GetUserInfo(ctx, &pb.GetUserInfoRequest{Username: authID.(string)})
+		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+				return
+			}
+
+			logger.Error("Failed to call Identity Service",
+				zap.String("error", err.Error()),
+				zap.String("username", authID.(string)),
+			)
+
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Identity service error"})
+			return
+		}
+
+		project.Owner = userResp.UserId
 
 		if err := db.RegisterProject(database, &project); err != nil {
 			logger.WithContext(c).Error("Failed to register project", zap.Error(err))

@@ -18,8 +18,8 @@ func SetupRouter(database *sql.DB, logger *logging.Logger, prov *kafka.Provision
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"http://localhost:3001"},
-		AllowMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowOrigins:     []string{"http://localhost:3001"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
@@ -33,7 +33,7 @@ func SetupRouter(database *sql.DB, logger *logging.Logger, prov *kafka.Provision
 	auth.Use(middleware.AuthMiddleware())
 	{
 		// --- Project Management ---
-		auth.POST("/project/register", helpers.RegisterProject(database, logger))
+		auth.POST("/project/register", helpers.RegisterProject(database, logger, idClient))
 		auth.GET("/projects/by-username/:username", helpers.GetProjectsByUser(database, logger, idClient))
 
 		// --- Schema Management ---
