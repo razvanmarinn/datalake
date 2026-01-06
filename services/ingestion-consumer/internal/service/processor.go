@@ -106,11 +106,12 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
 		return err
 	}
 
-	workerClient := pb.NewBatchReceiverServiceClient(workerConn)
-	_, err = workerClient.ReceiveBatch(ctx, &pb.SendClientRequestToWorker{
-		BatchId:  batch.UUID.String(),
-		Data:     avroBytes,
-		FileType: "avro",
+	workerClient := pb.NewDfsServiceClient(workerConn)
+	_, err = workerClient.StoreBlock(ctx, &pb.StoreBlockRequest{
+		ProjectId:  projectId,
+		SchemaName: key,
+		BlockId:    batch.UUID.String(),
+		Data:       avroBytes,
 	})
 
 	return err

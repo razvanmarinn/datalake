@@ -19,143 +19,181 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	BatchReceiverService_ReceiveBatch_FullMethodName           = "/worker_dfs.BatchReceiverService/ReceiveBatch"
-	BatchReceiverService_RetrieveBatchForClient_FullMethodName = "/worker_dfs.BatchReceiverService/RetrieveBatchForClient"
+	WorkerService_ReceiveBlock_FullMethodName  = "/worker_dfs.WorkerService/ReceiveBlock"
+	WorkerService_RetrieveBlock_FullMethodName = "/worker_dfs.WorkerService/RetrieveBlock"
+	WorkerService_GetWorkerID_FullMethodName   = "/worker_dfs.WorkerService/GetWorkerID"
 )
 
-// BatchReceiverServiceClient is the client API for BatchReceiverService service.
+// WorkerServiceClient is the client API for WorkerService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-//
-// BatchReceiverService handles batch operations between clients and workers
-type BatchReceiverServiceClient interface {
-	ReceiveBatch(ctx context.Context, in *SendClientRequestToWorker, opts ...grpc.CallOption) (*WorkerResponse, error)
-	RetrieveBatchForClient(ctx context.Context, in *GetClientRequestToWorker, opts ...grpc.CallOption) (*WorkerBatchResponse, error)
+type WorkerServiceClient interface {
+	// Generic Block Storage
+	ReceiveBlock(ctx context.Context, in *SendBlockRequest, opts ...grpc.CallOption) (*WorkerResponse, error)
+	RetrieveBlock(ctx context.Context, in *GetBlockRequest, opts ...grpc.CallOption) (*BlockResponse, error)
+	// Identity
+	GetWorkerID(ctx context.Context, in *WorkerIDRequest, opts ...grpc.CallOption) (*WorkerIDResponse, error)
 }
 
-type batchReceiverServiceClient struct {
+type workerServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewBatchReceiverServiceClient(cc grpc.ClientConnInterface) BatchReceiverServiceClient {
-	return &batchReceiverServiceClient{cc}
+func NewWorkerServiceClient(cc grpc.ClientConnInterface) WorkerServiceClient {
+	return &workerServiceClient{cc}
 }
 
-func (c *batchReceiverServiceClient) ReceiveBatch(ctx context.Context, in *SendClientRequestToWorker, opts ...grpc.CallOption) (*WorkerResponse, error) {
+func (c *workerServiceClient) ReceiveBlock(ctx context.Context, in *SendBlockRequest, opts ...grpc.CallOption) (*WorkerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(WorkerResponse)
-	err := c.cc.Invoke(ctx, BatchReceiverService_ReceiveBatch_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, WorkerService_ReceiveBlock_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *batchReceiverServiceClient) RetrieveBatchForClient(ctx context.Context, in *GetClientRequestToWorker, opts ...grpc.CallOption) (*WorkerBatchResponse, error) {
+func (c *workerServiceClient) RetrieveBlock(ctx context.Context, in *GetBlockRequest, opts ...grpc.CallOption) (*BlockResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(WorkerBatchResponse)
-	err := c.cc.Invoke(ctx, BatchReceiverService_RetrieveBatchForClient_FullMethodName, in, out, cOpts...)
+	out := new(BlockResponse)
+	err := c.cc.Invoke(ctx, WorkerService_RetrieveBlock_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// BatchReceiverServiceServer is the server API for BatchReceiverService service.
-// All implementations must embed UnimplementedBatchReceiverServiceServer
-// for forward compatibility.
-//
-// BatchReceiverService handles batch operations between clients and workers
-type BatchReceiverServiceServer interface {
-	ReceiveBatch(context.Context, *SendClientRequestToWorker) (*WorkerResponse, error)
-	RetrieveBatchForClient(context.Context, *GetClientRequestToWorker) (*WorkerBatchResponse, error)
-	mustEmbedUnimplementedBatchReceiverServiceServer()
+func (c *workerServiceClient) GetWorkerID(ctx context.Context, in *WorkerIDRequest, opts ...grpc.CallOption) (*WorkerIDResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkerIDResponse)
+	err := c.cc.Invoke(ctx, WorkerService_GetWorkerID_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
-// UnimplementedBatchReceiverServiceServer must be embedded to have
+// WorkerServiceServer is the server API for WorkerService service.
+// All implementations must embed UnimplementedWorkerServiceServer
+// for forward compatibility.
+type WorkerServiceServer interface {
+	// Generic Block Storage
+	ReceiveBlock(context.Context, *SendBlockRequest) (*WorkerResponse, error)
+	RetrieveBlock(context.Context, *GetBlockRequest) (*BlockResponse, error)
+	// Identity
+	GetWorkerID(context.Context, *WorkerIDRequest) (*WorkerIDResponse, error)
+	mustEmbedUnimplementedWorkerServiceServer()
+}
+
+// UnimplementedWorkerServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedBatchReceiverServiceServer struct{}
+type UnimplementedWorkerServiceServer struct{}
 
-func (UnimplementedBatchReceiverServiceServer) ReceiveBatch(context.Context, *SendClientRequestToWorker) (*WorkerResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ReceiveBatch not implemented")
+func (UnimplementedWorkerServiceServer) ReceiveBlock(context.Context, *SendBlockRequest) (*WorkerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReceiveBlock not implemented")
 }
-func (UnimplementedBatchReceiverServiceServer) RetrieveBatchForClient(context.Context, *GetClientRequestToWorker) (*WorkerBatchResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method RetrieveBatchForClient not implemented")
+func (UnimplementedWorkerServiceServer) RetrieveBlock(context.Context, *GetBlockRequest) (*BlockResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RetrieveBlock not implemented")
 }
-func (UnimplementedBatchReceiverServiceServer) mustEmbedUnimplementedBatchReceiverServiceServer() {}
-func (UnimplementedBatchReceiverServiceServer) testEmbeddedByValue()                              {}
+func (UnimplementedWorkerServiceServer) GetWorkerID(context.Context, *WorkerIDRequest) (*WorkerIDResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetWorkerID not implemented")
+}
+func (UnimplementedWorkerServiceServer) mustEmbedUnimplementedWorkerServiceServer() {}
+func (UnimplementedWorkerServiceServer) testEmbeddedByValue()                       {}
 
-// UnsafeBatchReceiverServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to BatchReceiverServiceServer will
+// UnsafeWorkerServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to WorkerServiceServer will
 // result in compilation errors.
-type UnsafeBatchReceiverServiceServer interface {
-	mustEmbedUnimplementedBatchReceiverServiceServer()
+type UnsafeWorkerServiceServer interface {
+	mustEmbedUnimplementedWorkerServiceServer()
 }
 
-func RegisterBatchReceiverServiceServer(s grpc.ServiceRegistrar, srv BatchReceiverServiceServer) {
-	// If the following call pancis, it indicates UnimplementedBatchReceiverServiceServer was
+func RegisterWorkerServiceServer(s grpc.ServiceRegistrar, srv WorkerServiceServer) {
+	// If the following call pancis, it indicates UnimplementedWorkerServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&BatchReceiverService_ServiceDesc, srv)
+	s.RegisterService(&WorkerService_ServiceDesc, srv)
 }
 
-func _BatchReceiverService_ReceiveBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(SendClientRequestToWorker)
+func _WorkerService_ReceiveBlock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SendBlockRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(BatchReceiverServiceServer).ReceiveBatch(ctx, in)
+		return srv.(WorkerServiceServer).ReceiveBlock(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: BatchReceiverService_ReceiveBatch_FullMethodName,
+		FullMethod: WorkerService_ReceiveBlock_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BatchReceiverServiceServer).ReceiveBatch(ctx, req.(*SendClientRequestToWorker))
+		return srv.(WorkerServiceServer).ReceiveBlock(ctx, req.(*SendBlockRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _BatchReceiverService_RetrieveBatchForClient_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetClientRequestToWorker)
+func _WorkerService_RetrieveBlock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBlockRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(BatchReceiverServiceServer).RetrieveBatchForClient(ctx, in)
+		return srv.(WorkerServiceServer).RetrieveBlock(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: BatchReceiverService_RetrieveBatchForClient_FullMethodName,
+		FullMethod: WorkerService_RetrieveBlock_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(BatchReceiverServiceServer).RetrieveBatchForClient(ctx, req.(*GetClientRequestToWorker))
+		return srv.(WorkerServiceServer).RetrieveBlock(ctx, req.(*GetBlockRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// BatchReceiverService_ServiceDesc is the grpc.ServiceDesc for BatchReceiverService service.
+func _WorkerService_GetWorkerID_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WorkerIDRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerServiceServer).GetWorkerID(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerService_GetWorkerID_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerServiceServer).GetWorkerID(ctx, req.(*WorkerIDRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// WorkerService_ServiceDesc is the grpc.ServiceDesc for WorkerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var BatchReceiverService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "worker_dfs.BatchReceiverService",
-	HandlerType: (*BatchReceiverServiceServer)(nil),
+var WorkerService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "worker_dfs.WorkerService",
+	HandlerType: (*WorkerServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "ReceiveBatch",
-			Handler:    _BatchReceiverService_ReceiveBatch_Handler,
+			MethodName: "ReceiveBlock",
+			Handler:    _WorkerService_ReceiveBlock_Handler,
 		},
 		{
-			MethodName: "RetrieveBatchForClient",
-			Handler:    _BatchReceiverService_RetrieveBatchForClient_Handler,
+			MethodName: "RetrieveBlock",
+			Handler:    _WorkerService_RetrieveBlock_Handler,
+		},
+		{
+			MethodName: "GetWorkerID",
+			Handler:    _WorkerService_GetWorkerID_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

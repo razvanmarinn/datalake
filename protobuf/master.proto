@@ -1,17 +1,18 @@
 syntax = "proto3";
-
-package master_dfs;
+package master_service;
 
 option go_package = "github.com/razvanmarinn/datalake/protobuf";
 
 import "common.proto";
 
 service MasterService {
+    // Standard Client Operations
+    rpc GetBatchDestination(common.ClientBlockRequestToMaster) returns (common.MasterResponse) {}
     rpc RegisterFile(common.ClientFileRequestToMaster) returns (common.MasterFileResponse) {}
-
-    rpc GetBatchDestination(common.ClientBatchRequestToMaster) returns (common.MasterResponse) {}
-
     rpc GetMetadata(common.Location) returns (common.MasterMetadataResponse) {}
-
     rpc GetFileListForProject(common.ApiRequestForFileList) returns (common.FileListResponse) {}
+
+    // NEW: Compactor Operations
+    rpc GetProjectFileDetails(common.GetProjectFilesRequest) returns (common.ProjectFilesResponse) {}
+    rpc CommitCompaction(common.CompactionRequest) returns (common.CompactionResponse) {}
 }

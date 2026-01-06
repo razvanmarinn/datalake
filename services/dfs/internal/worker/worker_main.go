@@ -52,9 +52,7 @@ func main() {
 
 	state.SetID(worker.ID)
 
-	pb.RegisterLBServiceServer(grpcServer, worker)
-	// master_pb.RegisterWorkerServiceServer(grpcServer, worker)
-	pb.RegisterBatchReceiverServiceServer(grpcServer, worker)
+	pb.RegisterDfsServiceServer(grpcServer, worker)
 	go func() {
 		log.Println("Starting gRPC server...")
 		if err := grpcServer.Serve(lis); err != nil {

@@ -2,16 +2,17 @@ package nodes
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	pb "github.com/razvanmarinn/datalake/protobuf"
 )
 
 func (wn *WorkerNode) Start() {
 	fmt.Println("WorkerNode started")
+	wn.CreateIfStorageFolderDoesntExist()
 }
 
 func (wn *WorkerNode) Stop() {
@@ -21,137 +22,102 @@ func (wn *WorkerNode) HealthCheck() bool {
 	return true
 }
 
-func (w *WorkerNode) ReceiveBatch(ctx context.Context, req *pb.SendClientRequestToWorker) (*pb.WorkerResponse, error) {
-	batchID := req.BatchId
-	w.ReceivedBatches[batchID] = req.Data
-	w.SaveBatch(batchID, FileFormat(req.FileType))
-	log.Printf("Received and stored batch ID: %s, Data length: %d", batchID, len(req.Data))
+
+
+func (w *WorkerNode) StoreBlock(ctx context.Context, req *pb.StoreBlockRequest) (*pb.WorkerResponse, error) {
+
+	blockID := req.BlockId
+
+	log.Printf("Received StoreBlock request for block ID: %s, Project: %s, Schema: %s", blockID, req.ProjectId, req.SchemaName)
+
+
+
+	w.lock.Lock()
+
+	w.StoredBlocks[blockID] = req.Data
+
+	w.lock.Unlock()
+
+
+
+	err := w.saveBlock(blockID, req.Data)
+
+	if err != nil {
+
+		log.Printf("Failed to save block %s: %v", blockID, err)
+
+		return &pb.WorkerResponse{Success: false}, err
+
+	}
+
+
+
+	log.Printf("Successfully stored block ID: %s, Data length: %d", blockID, len(req.Data))
+
+
 
 	return &pb.WorkerResponse{
+
 		Success: true,
-	}, nil
+
+	},
+
+	nil
+
 }
 
-func (w *WorkerNode) CreateIfStorageFolderDoesntExist() {
-	if _, err := os.Stat("/data"); os.IsNotExist(err) {
-		err := os.Mkdir("/data", 0755)
-		if err != nil {
-			log.Printf("Error creating /data directory: %v", err)
-		}
-	}
-	if _, err := os.Stat("/data/unstructured_data"); os.IsNotExist(err) {
-		err := os.Mkdir("/data/unstructured_data", 0755)
-		if err != nil {
-			log.Printf("Error creating /data/unstructured_data directory: %v", err)
-		}
-	}
-	if _, err := os.Stat("/data/streaming_ingestion"); os.IsNotExist(err) {
-		err := os.Mkdir("/data/streaming_ingestion", 0755)
-		if err != nil {
-			log.Printf("Error creating /data/streaming_ingestion directory: %v", err)
-		}
-		if _, err := os.Stat("/data/batch_ingestion"); os.IsNotExist(err) {
-			err := os.Mkdir("/data/batch_ingestion", 0755)
-			if err != nil {
-				log.Printf("Error creating /data/batch_ingestion directory: %v", err)
-			}
-		}
-	}
-}
 
-func (w *WorkerNode) SaveBatch(batchID string, format FileFormat) error {
+
+func (w *WorkerNode) GetBlock(ctx context.Context, req *pb.GetBlockRequest) (*pb.GetBlockResponse, error) {
+
+	blockID := req.BlockId
+
+	log.Printf("Received GetBlock request for block ID: %s", blockID)
+
+
+
 	w.lock.Lock()
-	defer w.lock.Unlock()
 
-	dataToSave := w.ReceivedBatches[batchID]
+	blockData, exists := w.StoredBlocks[blockID]
 
-	switch format {
-	case FormatBinary:
-		return w.saveUnstructuredData(batchID, dataToSave)
-	case FormatAvro:
-		return w.saveAvroFile(batchID, dataToSave)
-	// case FormatParquet:
-	// 	return saveParquetFile(dataToSave)
-	default:
-		return fmt.Errorf("unsupported file format: %v", format)
-	}
-}
+	w.lock.Unlock()
 
-func (w *WorkerNode) saveUnstructuredData(batchID string, data interface{}) error {
-	f, err := os.Create(batchID + ".bin")
-	if err != nil {
-		log.Printf("Error creating binary file: %v", err)
-		return fmt.Errorf("failed to create binary file: %w", err)
-	}
-	defer f.Close()
 
-	err = binary.Write(f, binary.LittleEndian, data)
-	if err != nil {
-		log.Printf("Error writing to binary file: %v", err)
-		return fmt.Errorf("failed to write to binary file: %w", err)
-	}
-	return nil
-}
 
-func (w *WorkerNode) saveAvroFile(batchID string, data []byte) error {
-	filePath := fmt.Sprintf("/data/streaming_ingestion/%s.avro", batchID)
+	if !exists {
 
-	f, err := os.Create(filePath)
-	if err != nil {
-		log.Printf("Error creating Avro file: %v", err)
-		return err
-	}
-	defer f.Close()
+		filePath := filepath.Join("/data", fmt.Sprintf("%s.bin", blockID))
 
-	_, err = f.Write(data)
-	if err != nil {
-		log.Printf("Error writing to Avro file: %v", err)
-		return err
+		data, err := os.ReadFile(filePath)
+
+		if err != nil {
+
+			log.Printf("Block not found in memory or disk: %s", blockID)
+
+			return &pb.GetBlockResponse{}, fmt.Errorf("block not found")
+
+		}
+
+		blockData = data
+
+
+
+		wn.lock.Lock()
+
+		wn.StoredBlocks[blockID] = blockData
+
+		wn.lock.Unlock()
+
 	}
 
-	return nil
-}
 
-// // Helper function to save Parquet file
-// func saveParquetFile(data interface{}) error {
-// 	f, err := os.Create(filePath + ".parquet")
-// 	if err != nil {
-// 		log.Printf("Error creating Parquet file: %v", err)
-// 		return fmt.Errorf("failed to create Parquet file: %w", err)
-// 	}
-// 	defer f.Close()
 
-// 	// Create a Parquet writer
-// 	// Note: This is a simplified example and will need to be customized
-// 	// based on your specific data structure
-// 	writer := parquet.NewWriter(f)
-// 	defer writer.Close()
+	return &pb.GetBlockResponse{
 
-// 	// You'll need to convert your data to a format compatible with Parquet
-// 	// This is a placeholder and should be replaced with actual conversion logic
-// 	row := parquet.NewRow(
-// 		parquet.NewBoolColumn("data"),
-// 	)
+		Data: blockData,
 
-// 	if err := writer.Write(row); err != nil {
-// 		log.Printf("Error writing to Parquet file: %v", err)
-// 		return fmt.Errorf("failed to write to Parquet file: %w", err)
-// 	}
-// 	return nil
-// }
+	},
 
-func (w *WorkerNode) GetWorkerID(ctx context.Context, req *pb.WorkerIDRequest) (*pb.WorkerIDResponse, error) {
-	log.Printf("Received GetWorkerID request")
-	return &pb.WorkerIDResponse{
-		WorkerId: &pb.UUID{Value: w.ID},
-	}, nil
-}
+	nil
 
-func (wn *WorkerNode) RetrieveBatchForClient(ctx context.Context, req *pb.GetClientRequestToWorker) (*pb.WorkerBatchResponse, error) {
-	batchID := req.BatchId
-	batchData := wn.ReceivedBatches[batchID]
-
-	return &pb.WorkerBatchResponse{
-		BatchData: batchData,
-	}, nil
 }

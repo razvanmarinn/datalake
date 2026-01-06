@@ -3,11 +3,13 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"errors"
 	"io/ioutil"
 	"log"
 	"os"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq" // Add this import
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"go.uber.org/zap"
 
@@ -296,4 +298,155 @@ func GetProjectOwnerID(db *sql.DB, projectName string) (string, error) {
     var ownerID string
     err := db.QueryRow("SELECT owner_id FROM project WHERE name = $1", projectName).Scan(&ownerID)
     return ownerID, err
+}
+
+func GetProjectID(db *sql.DB, projectName string) (uuid.UUID, error) {
+    var projectID uuid.UUID
+    err := db.QueryRow("SELECT id FROM project WHERE name = $1", projectName).Scan(&projectID)
+    if err != nil {
+        return uuid.Nil, fmt.Errorf("failed to get project ID for %s: %w", projectName, err)
+    }
+    return projectID, nil
+}
+
+func GetSchemaID(db *sql.DB, projectName, schemaName string) (int, error) {
+    var schemaID int
+    err := db.QueryRow("SELECT id FROM schemas WHERE project_name = $1 AND name = $2 ORDER BY version DESC LIMIT 1", projectName, schemaName).Scan(&schemaID)
+    if err != nil {
+        return 0, fmt.Errorf("failed to get schema ID for project %s, schema %s: %w", projectName, schemaName, err)
+    }
+    return schemaID, nil
+}
+
+// RegisterBlock inserts a new data file record
+func RegisterBlock(db *sql.DB, projectID uuid.UUID, schemaID int, block models.Block) error {
+	query := `INSERT INTO data_files (project_id, schema_id, block_id, worker_id, path, size, format) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	_, err := db.Exec(query, projectID, schemaID, block.BlockID, block.WorkerID, block.Path, block.Size, block.Format)
+	if err != nil {
+		return fmt.Errorf("error inserting block record: %v", err)
+	}
+	return nil
+}
+
+// GetBlockLocations retrieves block locations for a list of block IDs
+func GetBlockLocations(db *sql.DB, blockIDs []string) ([]models.BlockLocation, error) {
+	query := `SELECT block_id, worker_id, path FROM data_files WHERE block_id = ANY($1)`
+	rows, err := db.Query(query, pq.Array(blockIDs))
+	if err != nil {
+		return nil, fmt.Errorf("error querying block locations: %v", err)
+	}
+	defer rows.Close()
+
+	var locations []models.BlockLocation
+	for rows.Next() {
+		var loc models.BlockLocation
+		if err := rows.Scan(&loc.BlockID, &loc.WorkerID, &loc.Path); err != nil {
+			return nil, fmt.Errorf("error scanning block location: %v", err)
+		}
+		locations = append(locations, loc)
+	}
+	return locations, nil
+}
+
+// CreateCompactionJob creates a new compaction job
+func CreateCompactionJob(db *sql.DB, projectID uuid.UUID, schemaID int, targetBlockIDs []string) (*models.CompactionJob, error) {
+	job := &models.CompactionJob{
+		ID:             uuid.New(),
+		ProjectID:      projectID,
+		SchemaID:       schemaID,
+		Status:         "pending",
+		TargetBlockIDs: targetBlockIDs,
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}
+
+	query := `INSERT INTO compaction_jobs (id, project_id, schema_id, status, target_block_ids, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`
+	_, err := db.Exec(query, job.ID, job.ProjectID, job.SchemaID, job.Status, pq.Array(job.TargetBlockIDs), job.CreatedAt, job.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("error creating compaction job: %v", err)
+	}
+	return job, nil
+}
+
+// GetPendingCompactionJob retrieves a pending compaction job for a given project and schema
+func GetPendingCompactionJob(db *sql.DB, projectID uuid.UUID, schemaID int) (*models.CompactionJob, error) {
+	query := `SELECT id, project_id, schema_id, status, target_block_ids, output_file_path, created_at, updated_at FROM compaction_jobs WHERE project_id = $1 AND schema_id = $2 AND status = 'pending' LIMIT 1`
+	row := db.QueryRow(query, projectID, schemaID)
+
+	job := &models.CompactionJob{}
+	var targetBlockIDs []sql.NullString
+	err := row.Scan(&job.ID, &job.ProjectID, &job.SchemaID, &job.Status, pq.Array(&targetBlockIDs), &job.OutputFilePath, &job.CreatedAt, &job.UpdatedAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil // No pending job found
+		}
+		return nil, fmt.Errorf("error scanning pending compaction job: %v", err)
+	}
+
+	job.TargetBlockIDs = make([]string, len(targetBlockIDs))
+	for i, s := range targetBlockIDs {
+		job.TargetBlockIDs[i] = s.String
+	}
+
+	return job, nil
+}
+
+// UpdateCompactionJobStatus updates the status of a compaction job
+func UpdateCompactionJobStatus(db *sql.DB, jobID uuid.UUID, status, outputFilePath string, compactedBlockIDs []string) error {
+	query := `UPDATE compaction_jobs SET status = $1, output_file_path = $2, target_block_ids = $3, updated_at = $4 WHERE id = $5`
+	_, err := db.Exec(query, status, outputFilePath, pq.Array(compactedBlockIDs), time.Now(), jobID)
+	if err != nil {
+		return fmt.Errorf("error updating compaction job status: %v", err)
+	}
+	return nil
+}
+
+// GetUncompactedFileStats retrieves the number of uncompacted files for each project and schema
+func GetUncompactedFileStats(db *sql.DB) ([]models.UncompactedFileStat, error) {
+	query := `
+		SELECT project_id, schema_id, COUNT(*) as file_count
+		FROM data_files
+		WHERE is_compacted = FALSE
+		GROUP BY project_id, schema_id`
+
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("error querying uncompacted file stats: %v", err)
+	}
+	defer rows.Close()
+
+	var stats []models.UncompactedFileStat
+	for rows.Next() {
+		var stat models.UncompactedFileStat
+		if err := rows.Scan(&stat.ProjectID, &stat.SchemaID, &stat.FileCount); err != nil {
+			return nil, fmt.Errorf("error scanning uncompacted file stat: %v", err)
+		}
+		stats = append(stats, stat)
+	}
+	return stats, nil
+}
+
+// GetUncompactedBlockIDs retrieves a list of uncompacted block IDs for a given project and schema
+func GetUncompactedBlockIDs(db *sql.DB, projectID uuid.UUID, schemaID, limit int) ([]string, error) {
+	query := `
+		SELECT block_id
+		FROM data_files
+		WHERE project_id = $1 AND schema_id = $2 AND is_compacted = FALSE
+		LIMIT $3`
+
+	rows, err := db.Query(query, projectID, schemaID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("error querying uncompacted block IDs: %v", err)
+	}
+	defer rows.Close()
+
+	var blockIDs []string
+	for rows.Next() {
+		var blockID string
+		if err := rows.Scan(&blockID); err != nil {
+			return nil, fmt.Errorf("error scanning uncompacted block ID: %v", err)
+		}
+		blockIDs = append(blockIDs, blockID)
+	}
+	return blockIDs, nil
 }

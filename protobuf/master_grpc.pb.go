@@ -19,20 +19,26 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	MasterService_RegisterFile_FullMethodName          = "/master_dfs.MasterService/RegisterFile"
-	MasterService_GetBatchDestination_FullMethodName   = "/master_dfs.MasterService/GetBatchDestination"
-	MasterService_GetMetadata_FullMethodName           = "/master_dfs.MasterService/GetMetadata"
-	MasterService_GetFileListForProject_FullMethodName = "/master_dfs.MasterService/GetFileListForProject"
+	MasterService_GetBatchDestination_FullMethodName   = "/master_service.MasterService/GetBatchDestination"
+	MasterService_RegisterFile_FullMethodName          = "/master_service.MasterService/RegisterFile"
+	MasterService_GetMetadata_FullMethodName           = "/master_service.MasterService/GetMetadata"
+	MasterService_GetFileListForProject_FullMethodName = "/master_service.MasterService/GetFileListForProject"
+	MasterService_GetProjectFileDetails_FullMethodName = "/master_service.MasterService/GetProjectFileDetails"
+	MasterService_CommitCompaction_FullMethodName      = "/master_service.MasterService/CommitCompaction"
 )
 
 // MasterServiceClient is the client API for MasterService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type MasterServiceClient interface {
+	// Standard Client Operations
+	GetBatchDestination(ctx context.Context, in *ClientBlockRequestToMaster, opts ...grpc.CallOption) (*MasterResponse, error)
 	RegisterFile(ctx context.Context, in *ClientFileRequestToMaster, opts ...grpc.CallOption) (*MasterFileResponse, error)
-	GetBatchDestination(ctx context.Context, in *ClientBatchRequestToMaster, opts ...grpc.CallOption) (*MasterResponse, error)
 	GetMetadata(ctx context.Context, in *Location, opts ...grpc.CallOption) (*MasterMetadataResponse, error)
 	GetFileListForProject(ctx context.Context, in *ApiRequestForFileList, opts ...grpc.CallOption) (*FileListResponse, error)
+	// NEW: Compactor Operations
+	GetProjectFileDetails(ctx context.Context, in *GetProjectFilesRequest, opts ...grpc.CallOption) (*ProjectFilesResponse, error)
+	CommitCompaction(ctx context.Context, in *CompactionRequest, opts ...grpc.CallOption) (*CompactionResponse, error)
 }
 
 type masterServiceClient struct {
@@ -43,20 +49,20 @@ func NewMasterServiceClient(cc grpc.ClientConnInterface) MasterServiceClient {
 	return &masterServiceClient{cc}
 }
 
-func (c *masterServiceClient) RegisterFile(ctx context.Context, in *ClientFileRequestToMaster, opts ...grpc.CallOption) (*MasterFileResponse, error) {
+func (c *masterServiceClient) GetBatchDestination(ctx context.Context, in *ClientBlockRequestToMaster, opts ...grpc.CallOption) (*MasterResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(MasterFileResponse)
-	err := c.cc.Invoke(ctx, MasterService_RegisterFile_FullMethodName, in, out, cOpts...)
+	out := new(MasterResponse)
+	err := c.cc.Invoke(ctx, MasterService_GetBatchDestination_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *masterServiceClient) GetBatchDestination(ctx context.Context, in *ClientBatchRequestToMaster, opts ...grpc.CallOption) (*MasterResponse, error) {
+func (c *masterServiceClient) RegisterFile(ctx context.Context, in *ClientFileRequestToMaster, opts ...grpc.CallOption) (*MasterFileResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(MasterResponse)
-	err := c.cc.Invoke(ctx, MasterService_GetBatchDestination_FullMethodName, in, out, cOpts...)
+	out := new(MasterFileResponse)
+	err := c.cc.Invoke(ctx, MasterService_RegisterFile_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -83,14 +89,38 @@ func (c *masterServiceClient) GetFileListForProject(ctx context.Context, in *Api
 	return out, nil
 }
 
+func (c *masterServiceClient) GetProjectFileDetails(ctx context.Context, in *GetProjectFilesRequest, opts ...grpc.CallOption) (*ProjectFilesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProjectFilesResponse)
+	err := c.cc.Invoke(ctx, MasterService_GetProjectFileDetails_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *masterServiceClient) CommitCompaction(ctx context.Context, in *CompactionRequest, opts ...grpc.CallOption) (*CompactionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompactionResponse)
+	err := c.cc.Invoke(ctx, MasterService_CommitCompaction_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // MasterServiceServer is the server API for MasterService service.
 // All implementations must embed UnimplementedMasterServiceServer
 // for forward compatibility.
 type MasterServiceServer interface {
+	// Standard Client Operations
+	GetBatchDestination(context.Context, *ClientBlockRequestToMaster) (*MasterResponse, error)
 	RegisterFile(context.Context, *ClientFileRequestToMaster) (*MasterFileResponse, error)
-	GetBatchDestination(context.Context, *ClientBatchRequestToMaster) (*MasterResponse, error)
 	GetMetadata(context.Context, *Location) (*MasterMetadataResponse, error)
 	GetFileListForProject(context.Context, *ApiRequestForFileList) (*FileListResponse, error)
+	// NEW: Compactor Operations
+	GetProjectFileDetails(context.Context, *GetProjectFilesRequest) (*ProjectFilesResponse, error)
+	CommitCompaction(context.Context, *CompactionRequest) (*CompactionResponse, error)
 	mustEmbedUnimplementedMasterServiceServer()
 }
 
@@ -101,17 +131,23 @@ type MasterServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedMasterServiceServer struct{}
 
+func (UnimplementedMasterServiceServer) GetBatchDestination(context.Context, *ClientBlockRequestToMaster) (*MasterResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBatchDestination not implemented")
+}
 func (UnimplementedMasterServiceServer) RegisterFile(context.Context, *ClientFileRequestToMaster) (*MasterFileResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterFile not implemented")
-}
-func (UnimplementedMasterServiceServer) GetBatchDestination(context.Context, *ClientBatchRequestToMaster) (*MasterResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method GetBatchDestination not implemented")
 }
 func (UnimplementedMasterServiceServer) GetMetadata(context.Context, *Location) (*MasterMetadataResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetMetadata not implemented")
 }
 func (UnimplementedMasterServiceServer) GetFileListForProject(context.Context, *ApiRequestForFileList) (*FileListResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetFileListForProject not implemented")
+}
+func (UnimplementedMasterServiceServer) GetProjectFileDetails(context.Context, *GetProjectFilesRequest) (*ProjectFilesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetProjectFileDetails not implemented")
+}
+func (UnimplementedMasterServiceServer) CommitCompaction(context.Context, *CompactionRequest) (*CompactionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CommitCompaction not implemented")
 }
 func (UnimplementedMasterServiceServer) mustEmbedUnimplementedMasterServiceServer() {}
 func (UnimplementedMasterServiceServer) testEmbeddedByValue()                       {}
@@ -134,6 +170,24 @@ func RegisterMasterServiceServer(s grpc.ServiceRegistrar, srv MasterServiceServe
 	s.RegisterService(&MasterService_ServiceDesc, srv)
 }
 
+func _MasterService_GetBatchDestination_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClientBlockRequestToMaster)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MasterServiceServer).GetBatchDestination(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MasterService_GetBatchDestination_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MasterServiceServer).GetBatchDestination(ctx, req.(*ClientBlockRequestToMaster))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _MasterService_RegisterFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ClientFileRequestToMaster)
 	if err := dec(in); err != nil {
@@ -148,24 +202,6 @@ func _MasterService_RegisterFile_Handler(srv interface{}, ctx context.Context, d
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(MasterServiceServer).RegisterFile(ctx, req.(*ClientFileRequestToMaster))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _MasterService_GetBatchDestination_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ClientBatchRequestToMaster)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(MasterServiceServer).GetBatchDestination(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: MasterService_GetBatchDestination_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MasterServiceServer).GetBatchDestination(ctx, req.(*ClientBatchRequestToMaster))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -206,20 +242,56 @@ func _MasterService_GetFileListForProject_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _MasterService_GetProjectFileDetails_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetProjectFilesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MasterServiceServer).GetProjectFileDetails(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MasterService_GetProjectFileDetails_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MasterServiceServer).GetProjectFileDetails(ctx, req.(*GetProjectFilesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _MasterService_CommitCompaction_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompactionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(MasterServiceServer).CommitCompaction(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: MasterService_CommitCompaction_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(MasterServiceServer).CommitCompaction(ctx, req.(*CompactionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // MasterService_ServiceDesc is the grpc.ServiceDesc for MasterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var MasterService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "master_dfs.MasterService",
+	ServiceName: "master_service.MasterService",
 	HandlerType: (*MasterServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "RegisterFile",
-			Handler:    _MasterService_RegisterFile_Handler,
-		},
-		{
 			MethodName: "GetBatchDestination",
 			Handler:    _MasterService_GetBatchDestination_Handler,
+		},
+		{
+			MethodName: "RegisterFile",
+			Handler:    _MasterService_RegisterFile_Handler,
 		},
 		{
 			MethodName: "GetMetadata",
@@ -228,6 +300,14 @@ var MasterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetFileListForProject",
 			Handler:    _MasterService_GetFileListForProject_Handler,
+		},
+		{
+			MethodName: "GetProjectFileDetails",
+			Handler:    _MasterService_GetProjectFileDetails_Handler,
+		},
+		{
+			MethodName: "CommitCompaction",
+			Handler:    _MasterService_CommitCompaction_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

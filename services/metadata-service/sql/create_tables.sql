@@ -33,4 +33,28 @@ CREATE TABLE IF NOT EXISTS project (
     description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     owner_id UUID NOT NULL
-)
+);
+
+CREATE TABLE IF NOT EXISTS data_files (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    schema_id INT NOT NULL REFERENCES schemas(id) ON DELETE CASCADE,
+    block_id UUID NOT NULL UNIQUE,
+    worker_id UUID NOT NULL,
+    path TEXT NOT NULL,
+    size BIGINT NOT NULL,
+    format TEXT NOT NULL,
+    is_compacted BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS compaction_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+    schema_id INT NOT NULL REFERENCES schemas(id) ON DELETE CASCADE,
+    status TEXT NOT NULL,
+    target_block_ids TEXT[] NOT NULL, -- Array of UUID strings
+    output_file_path TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

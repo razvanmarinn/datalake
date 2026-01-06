@@ -5,8 +5,18 @@ package metadata_service;
 
 option go_package = "github.com/razvanmarinn/datalake/protobuf";
 
+import "google/protobuf/timestamp.proto";
+
 service MetadataService {
-    rpc VerifyProjectExistence(VerifyProjectExistenceRequest) returns (VerifyProjectExistenceResponse) {}
+    rpc VerifyProjectExistence(VerifyProjectExistenceRequest) returns (VerifyProjectExistenceResponse);
+
+    // Compaction Job Management
+    rpc GetCompactionJob(GetCompactionJobRequest) returns (GetCompactionJobResponse);
+    rpc UpdateCompactionJobStatus(UpdateCompactionJobStatusRequest) returns (SimpleResponse);
+
+    // Block Management
+    rpc RegisterBlock(RegisterBlockRequest) returns (SimpleResponse);
+    rpc GetBlockLocations(GetBlockLocationsRequest) returns (GetBlockLocationsResponse);
 }
 
 message VerifyProjectExistenceRequest {
@@ -14,4 +24,61 @@ message VerifyProjectExistenceRequest {
 }
 message VerifyProjectExistenceResponse {
     bool exists = 1;
+}
+
+message SimpleResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message CompactionJob {
+    string id = 1;
+    string project_id = 2;
+    string schema_name = 3;
+    string status = 4; // e.g., "pending", "in_progress", "completed", "failed"
+    repeated string target_block_ids = 5;
+    string output_file_path = 6;
+    google.protobuf.Timestamp created_at = 7;
+    google.protobuf.Timestamp updated_at = 8;
+}
+
+message GetCompactionJobRequest {
+    // Optionally, request a job for a specific project/schema
+    string project_id = 1;
+    string schema_name = 2;
+}
+
+message GetCompactionJobResponse {
+    CompactionJob job = 1;
+}
+
+message UpdateCompactionJobStatusRequest {
+    string job_id = 1;
+    string status = 2; // e.g., "in_progress", "completed", "failed"
+    string output_file_path = 3; // Only if status is completed
+    repeated string compacted_block_ids = 4; // Block IDs that were compacted
+}
+
+message RegisterBlockRequest {
+    string project_id = 1;
+    string schema_name = 2;
+    string block_id = 3;
+    string worker_id = 4;
+    string path = 5;
+    int64 size = 6;
+    string format = 7; // e.g., "avro", "binary"
+}
+
+message BlockLocation {
+    string block_id = 1;
+    string worker_id = 2;
+    string path = 3;
+}
+
+message GetBlockLocationsRequest {
+    repeated string block_ids = 1;
+}
+
+message GetBlockLocationsResponse {
+    repeated BlockLocation locations = 1;
 }

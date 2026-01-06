@@ -32,61 +32,68 @@ type server struct {
 }
 
 func (s *server) RegisterFile(ctx context.Context, in *pb.ClientFileRequestToMaster) (*pb.MasterFileResponse, error) {
-	fm := s.masterNode.RegisterFile(in)
+	inode := s.masterNode.RegisterFile(in)
+	
+	s.logger.Info("File registered successfully", 
+		zap.String("file_name", inode.Name), 
+		zap.String("file_id", inode.ID))
 
-	s.masterNode.FileRegistry = append(s.masterNode.FileRegistry, *fm)
 	return &pb.MasterFileResponse{Success: true}, nil
 }
 
 func (s *server) GetBatchDestination(ctx context.Context, in *pb.ClientBatchRequestToMaster) (*pb.MasterResponse, error) {
-	s.logger.Info("Received GetBatchDestination request for batch: %v", zap.String("batch_id", in.GetBatchId()))
+	s.logger.Info("Received GetBatchDestination request for batch", zap.String("batch_id", in.GetBatchId()))
 
 	wid, wm := s.masterNode.LoadBalancer.GetNextClient()
-	batchuuid, err := uuid.Parse(in.GetBatchId())
+	
+	blockUUID, err := uuid.Parse(in.GetBatchId())
 	if err != nil {
 		s.logger.Error("Invalid batch ID format", zap.String("batch_id", in.GetBatchId()), zap.Error(err))
+		return nil, err
 	}
-	s.masterNode.UpdateBatchLocation(batchuuid, wid)
+
+	// This updates the BlockMap in the master node
+	s.masterNode.UpdateBatchLocation(blockUUID, wid)
 
 	return &pb.MasterResponse{WorkerIp: wm.Ip, WorkerPort: wm.Port}, nil
 }
 
 func (s *server) GetMetadata(ctx context.Context, in *pb.Location) (*pb.MasterMetadataResponse, error) {
-	s.logger.Info("Received GetMetadata request for file: %v", zap.String("file_name", in.GetFileName()))
+	s.logger.Info("Received GetMetadata request for file", zap.String("file_name", in.GetFileName()))
 
-	uuids := s.masterNode.GetFileBatches(in.GetFileName())
-	batch_ids := make([]string, len(uuids))
-	for i, id := range uuids {
-		batch_ids[i] = id.String()
+	blockUUIDs := s.masterNode.GetFileBatches(in.GetFileName())
+	if blockUUIDs == nil {
+		return &pb.MasterMetadataResponse{}, fmt.Errorf("file not found: %s", in.GetFileName())
+	}
+
+	batchIds := make([]string, len(blockUUIDs))
+	for i, id := range blockUUIDs {
+		batchIds[i] = id.String()
 	}
 
 	batchLocations := make(map[string]*pb.BatchLocation)
 
-	for _, bId := range uuids {
-		worker_node_ids := s.masterNode.GetBatchLocations(bId)
-
+	for _, bId := range blockUUIDs {
+		workerNodeUUIDs := s.masterNode.GetBatchLocations(bId)
 		workerAddresses := make([]string, 0)
 
-		for _, wId := range worker_node_ids {
+		for _, wId := range workerNodeUUIDs {
 			_, ip, port, err := s.masterNode.LoadBalancer.GetClientByWorkerID(wId.String())
 			if err != nil {
 				s.logger.Error("Error getting client for worker ID", zap.String("worker_id", wId.String()), zap.Error(err))
 				continue
 			}
-			combineIpAndPort := func(ip string, port int32) string {
-				return fmt.Sprintf("%s:%d", ip, port)
-
-			}
-			address := combineIpAndPort(ip, port)
+			address := fmt.Sprintf("%s:%d", ip, port)
 			workerAddresses = append(workerAddresses, address)
 		}
+		
 		batchLocations[bId.String()] = &pb.BatchLocation{
 			WorkerIds: workerAddresses,
 		}
 	}
 
 	return &pb.MasterMetadataResponse{
-		BatchIds:       batch_ids,
+		BatchIds:       batchIds,
 		BatchLocations: batchLocations,
 	}, nil
 }
@@ -94,17 +101,14 @@ func (s *server) GetMetadata(ctx context.Context, in *pb.Location) (*pb.MasterMe
 func (s *server) GetFileListForProject(ctx context.Context, in *pb.ApiRequestForFileList) (*pb.FileListResponse, error) {
 	log.Printf("GetFileListForProject called with OwnerID=%s, ProjectID=%s", in.OwnerId, in.ProjectId)
 
-	// Log the full FileRegistry
-	log.Printf("Current FileRegistry: %+v", s.masterNode.FileRegistry)
+	s.masterNode.Lock() // Assuming you exported the lock or added a Lock/Unlock method. 
 
 	fileList := make([]string, 0)
 
-	for _, file := range s.masterNode.FileRegistry {
-		log.Printf("Checking file: Name=%s, OwnerID=%s, ProjectID=%s", file.Name, file.OwnerID, file.ProjectID)
 
-		if file.OwnerID == in.OwnerId && file.ProjectID == in.ProjectId {
-			log.Printf("Adding file to response: %s", file.Name)
-			fileList = append(fileList, file.Name)
+	for _, inode := range s.masterNode.Namespace {
+		if inode.OwnerID == in.OwnerId && inode.ProjectID == in.ProjectId {
+			fileList = append(fileList, inode.Name)
 		}
 	}
 
@@ -112,12 +116,15 @@ func (s *server) GetFileListForProject(ctx context.Context, in *pb.ApiRequestFor
 	return &pb.FileListResponse{FileListNames: fileList}, nil
 }
 
+
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.SetOutput(os.Stdout)
 
 	logger := logging.NewDefaultLogger("master_node")
 	defer logger.Sync()
+	
 	state := nodes.NewMasterNodeState()
 	masterNode := nodes.GetMasterNodeInstance()
 
@@ -156,6 +163,7 @@ func main() {
 		logger.Info("Shutting down master node and gRPC server")
 
 		state.UpdateState(masterNode)
+		
 		if err := state.SaveState(); err != nil {
 			logger.Error("Failed to save master node state", zap.Error(err))
 		}

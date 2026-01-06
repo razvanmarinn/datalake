@@ -5,23 +5,34 @@ option go_package = "github.com/razvanmarinn/datalake/protobuf";
 
 import "common.proto";
 
-// BatchReceiverService handles batch operations between clients and workers
-service BatchReceiverService {
-
-    rpc ReceiveBatch(SendClientRequestToWorker) returns (common.WorkerResponse) {}
+service WorkerService {
+    // Generic Block Storage
+    rpc ReceiveBlock(SendBlockRequest) returns (common.WorkerResponse) {}
+    rpc RetrieveBlock(GetBlockRequest) returns (BlockResponse) {}
     
-
-    rpc RetrieveBatchForClient(GetClientRequestToWorker) returns (WorkerBatchResponse) {}
+    // Identity
+    rpc GetWorkerID(WorkerIDRequest) returns (WorkerIDResponse) {}
 }
 
-message GetClientRequestToWorker {
-    string batch_id = 1; 
+message GetBlockRequest {
+    string block_id = 1; 
 }
-message SendClientRequestToWorker {
-    string batch_id = 1; 
+
+message SendBlockRequest {
+    string block_id = 1; 
     bytes data = 2;
-    string file_type = 3;
 }
-message WorkerBatchResponse {
-    bytes batch_data = 1; 
+
+message BlockResponse {
+    bytes block_data = 1; 
+}
+
+message WorkerIDRequest {}
+
+message WorkerIDResponse {
+    UUID worker_id = 1;
+}
+
+message UUID {
+    string value = 1;
 }
