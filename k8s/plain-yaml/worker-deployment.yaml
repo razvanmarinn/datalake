@@ -62,7 +62,7 @@ spec:
     spec:
       containers:
       - name: worker
-        image: razvan1y/worker:latest
+        image: razvan1y/dfs-worker:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 50051

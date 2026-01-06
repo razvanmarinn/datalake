@@ -45,7 +45,7 @@ func NewLoadBalancer(numWorkers int, basePort int) *LoadBalancer {
 
 	for i := 0; i < numWorkers; i++ {
 		conn, err := grpc.Dial(
-			fmt.Sprintf("%s-%d:%d", workerAddress, i+1, basePort+i),
+			fmt.Sprintf("%s-%d.worker-headless:%d", workerAddress, i, basePort),
 			grpc.WithTransportCredentials(insecure.NewCredentials()),
 			grpc.WithDefaultCallOptions(
 				grpc.MaxCallRecvMsgSize(64*1024*1024),
@@ -69,7 +69,8 @@ func NewLoadBalancer(numWorkers int, basePort int) *LoadBalancer {
 		}
 
 		workerID := resp.WorkerId.Value
-		wMetadata := NewWorkerMetadata(client, fmt.Sprintf("%s-%d", workerAddress, i+1), int32(basePort+i), 0)
+		address := fmt.Sprintf("%s-%d.worker-headless", workerAddress, i)
+		wMetadata := NewWorkerMetadata(client, address, int32(basePort), 0)
 		lb.workerInfo[workerID] = *wMetadata
 		log.Printf("Successfully connected to worker node %d with UUID %s", i+1, workerID)
 	}
