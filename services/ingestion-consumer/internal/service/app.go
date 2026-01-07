@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
 	"github.com/razvanmarinn/ingestion_consumer/internal/batcher"
 	"github.com/razvanmarinn/ingestion_consumer/internal/config"
 	"github.com/razvanmarinn/ingestion_consumer/internal/infra"
@@ -27,7 +28,7 @@ type App struct {
 	TracerProvider interface{}
 	Tracer         trace.Tracer
 	HttpClient     *http.Client
-	DLTProducer *kafka.Producer
+	DLTProducer    *kafka.Producer
 
 	GrpcConnCache *infra.GRPCConnCache
 
@@ -44,8 +45,8 @@ func NewApp(cfg config.Config, logger *slog.Logger) (*App, error) {
 
 	dltProducer, err := kafka.NewProducer(&kafka.ConfigMap{
 		"bootstrap.servers": cfg.KafkaBrokers[0],
-		"client.id":        ServiceName + "-dlt-producer",
-		"acks":             "all",
+		"client.id":         ServiceName + "-dlt-producer",
+		"acks":              "all",
 	})
 	if err != nil {
 		return nil, err
@@ -62,6 +63,26 @@ func NewApp(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Batcher:        batcher.NewBatcher("mixed-topics-batch", MaxBatchSize),
 		SchemaCache:    infra.NewSchemaCache(),
 	}, nil
+}
+
+func (app *App) fetchProjectId(ctx context.Context, projectName string) (string, error) {
+	ctx, span := app.Tracer.Start(ctx, "fetchProjectId")
+	defer span.End()
+
+	catalogConn, err := app.GrpcConnCache.Get(app.Config.SchemaRegistryHost)
+	if err != nil {
+		return "", err
+	}
+	catalogClient := catalogv1.NewCatalogServiceClient(catalogConn)
+
+	resp, err := catalogClient.GetProject(ctx, &catalogv1.GetProjectRequest{
+		ProjectName: projectName,
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return resp.ProjectId, nil
 }
 
 func (app *App) Run(ctx context.Context) {

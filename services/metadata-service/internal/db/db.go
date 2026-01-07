@@ -126,6 +126,15 @@ func GetProjectByID(db *sql.DB, projectID uuid.UUID) (*models.ProjectMetadata, e
 	return &p, nil
 }
 
+func GetProjectUUIDByProjectName(db *sql.DB, projectName string) (uuid.UUID, error) {
+	var projectID uuid.UUID
+	err := db.QueryRow("SELECT id FROM project WHERE name = $1", projectName).Scan(&projectID)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to get project ID for %s: %w", projectName, err)
+	}
+	return projectID, nil
+}
+
 func GetProjects(db *sql.DB, owner_id string) (map[string]uuid.UUID, error) {
 	query := `SELECT name, owner_id FROM project WHERE owner_id = $1`
 	rows, err := db.Query(query, owner_id)
@@ -240,6 +249,34 @@ func GetSchema(db *sql.DB, projectName, schemaName string) (*models.SchemaWithDe
 
 	if err != nil {
 		return nil, err // Let the caller handle sql.ErrNoRows
+	}
+
+	return &s, nil
+}
+
+func GetSchemaByID(db *sql.DB, schemaID int) (*models.SchemaWithDetails, error) {
+	query := `
+        SELECT 
+            s.id, s.project_name, s.name, s.version, 
+            a.definition as avro_def, 
+            p.definition as parquet_def
+        FROM schemas s
+        JOIN avro_schemas a ON s.id = a.schema_id
+        JOIN parquet_schemas p ON s.id = p.schema_id
+        WHERE s.id = $1`
+
+	var s models.SchemaWithDetails
+	err := db.QueryRow(query, schemaID).Scan(
+		&s.ID,
+		&s.ProjectName,
+		&s.Name,
+		&s.Version,
+		&s.AvroSchema,
+		&s.ParquetSchema,
+	)
+
+	if err != nil {
+		return nil, err
 	}
 
 	return &s, nil

@@ -14,23 +14,23 @@ type Schema struct {
 	Project       string `json:"project_name"`
 	Name          string `json:"name"`
 	Version       int    `json:"version"`
-	AvroSchema    string `json:"avro_schema"`   
-	ParquetSchema string `json:"parquet_schema"` 
+	AvroSchema    string `json:"avro_schema"`
+	ParquetSchema string `json:"parquet_schema"`
 }
 
 type MessageBatch struct {
-	UUID      uuid.UUID
-	Topic     string
-	Messages  []Message
-	OwnerId   string
-	ProjectId string
+	UUID        uuid.UUID
+	Topic       string
+	Messages    []Message
+	OwnerId     string
+	ProjectName string
 }
 
 type Message struct {
 	Key       []byte
 	Value     []byte
 	OwnerId   string
-	ProjectId string
+	ProjectName string
 	Data      map[string]interface{}
 }
 
@@ -73,18 +73,18 @@ func NewMessageBatch(topic string) *MessageBatch {
 	}
 }
 
-func (mb *MessageBatch) AddMessage(key, value []byte, ownerId, projectId string, data map[string]interface{}) {
+func (mb *MessageBatch) AddMessage(key, value []byte, ownerId, projectName string, data map[string]interface{}) {
 	mb.Messages = append(mb.Messages, Message{
 		Key:       key,
 		Value:     value,
 		OwnerId:   ownerId,
-		ProjectId: projectId,
+		ProjectName: projectName,
 		Data:      data,
 	})
 
 	if len(mb.Messages) == 1 {
 		mb.OwnerId = ownerId
-		mb.ProjectId = projectId
+		mb.ProjectName = projectName
 	}
 }
 
@@ -148,7 +148,7 @@ func normalizeValue(v interface{}) interface{} {
 
 func UnmarshalMessage(value []byte) (map[string]interface{}, error) {
 	decoder := json.NewDecoder(bytes.NewReader(value))
-	decoder.UseNumber() 
+	decoder.UseNumber()
 
 	var wrapper map[string]interface{}
 	if err := decoder.Decode(&wrapper); err != nil {

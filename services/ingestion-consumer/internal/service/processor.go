@@ -12,7 +12,6 @@ import (
 
 	commonv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/common/v1"
 	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
-
 	datanodev1 "github.com/razvanmarinn/datalake/protobuf/gen/go/datanode/v1"
 	"github.com/razvanmarinn/ingestion_consumer/internal/batcher"
 	"github.com/razvanmarinn/ingestion_consumer/internal/infra"
@@ -62,10 +61,14 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
 		return nil
 	}
 
-	projectId := batch.Messages[0].ProjectId
+	projectName := batch.Messages[0].ProjectName
+	projectId, err := app.fetchProjectId(ctx, projectName)
+	if err != nil {
+		return err
+	}
 	key := string(batch.Messages[0].Key) // schema name
 
-	schema, err := app.fetchSchema(ctx, projectId, key)
+	schema, err := app.fetchSchema(ctx, projectName, key)
 	if err != nil {
 		return err
 	}

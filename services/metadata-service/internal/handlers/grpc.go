@@ -22,15 +22,13 @@ type GRPCServer struct {
 
 // GetProject retrieves project metadata by ID.
 func (s *GRPCServer) GetProject(ctx context.Context, req *catalogv1.GetProjectRequest) (*catalogv1.GetProjectResponse, error) {
-	s.Logger.Info("Received GetProject request", zap.String("project_id", req.GetProjectId()))
 
-	projectID, err := uuid.Parse(req.GetProjectId())
-	if err != nil {
-		return nil, fmt.Errorf("invalid project ID format: %w", err)
-	}
+	projectName := req.GetProjectName()
 
-	// Assuming db.GetProjectByID returns a model with OwnerID and CreatedAt
-	project, err := db.GetProjectByID(s.DB, projectID)
+	s.Logger.Info("Received GetProject request", zap.String("project_name", projectName))
+
+	projectId, err := db.GetProjectUUIDByProjectName(s.DB, projectName)
+	project, err := db.GetProjectByID(s.DB, projectId)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("project not found")
@@ -40,7 +38,7 @@ func (s *GRPCServer) GetProject(ctx context.Context, req *catalogv1.GetProjectRe
 	}
 
 	return &catalogv1.GetProjectResponse{
-		ProjectId: req.ProjectId,
+		ProjectId: projectId.String(),
 		OwnerId:   project.Owner,
 		CreatedAt: timestamppb.New(project.CreatedAt),
 	}, nil
@@ -57,12 +55,16 @@ func (s *GRPCServer) PollCompactionJobs(ctx context.Context, req *catalogv1.Poll
 		s.Logger.Error("Failed to poll compaction job", zap.Error(err))
 		return nil, fmt.Errorf("failed to fetch job: %w", err)
 	}
-
+	schema, err := db.GetSchemaByID(s.DB, job.SchemaID)
+	if err != nil {
+		s.Logger.Error("Failed to fetch schema", zap.Error(err))
+		return nil, fmt.Errorf("failed to fetch schema: %w", err)
+	}
 	return &catalogv1.PollCompactionJobsResponse{
 		JobId:       job.ID.String(),
 		ProjectId:   job.ProjectID.String(),
-		SchemaName:  job.SchemaID  ,
-		TargetFiles: job.TargetBlockIDs, // Assumes []string
+		SchemaName:  schema.Name,
+		TargetFiles: job.TargetBlockIDs,
 	}, nil
 }
 
