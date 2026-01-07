@@ -6,13 +6,15 @@ require (
 	github.com/confluentinc/confluent-kafka-go/v2 v2.12.0
 	github.com/google/uuid v1.6.0
 	github.com/linkedin/goavro/v2 v2.13.1
-	github.com/razvanmarinn/datalake v0.0.0-20260107154359-080f4f15f641
+	github.com/razvanmarinn/datalake v0.0.0-20260107173712-cd659897ff33
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.37.0
 	go.opentelemetry.io/otel/sdk v1.37.0
 	go.opentelemetry.io/otel/trace v1.37.0
 	google.golang.org/grpc v1.73.0
 )
+
+replace github.com/razvanmarinn/datalake => ../..
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.2 // indirect
