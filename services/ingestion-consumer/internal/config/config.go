@@ -12,6 +12,7 @@ type Config struct {
 	KafkaGroupID          string
 	KafkaDLTTopic         string
 	SchemaRegistryHost    string
+	CatalogServiceAddress string
 	MasterAddress         string
 	OtelCollectorAddr     string
 }
@@ -33,13 +34,14 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		KafkaBrokers:       strings.Split(kafkaBrokers, ","),
-		KafkaTopicRegex:    topicRegex,
-		KafkaGroupID:       groupID,
-		KafkaDLTTopic:      getEnv("KAFKA_DLT_TOPIC", "ingestion-dlt"),
-		SchemaRegistryHost: getEnv("SCHEMA_REGISTRY_HOST", "schema-registry.datalake:8081"),
-		MasterAddress:      getEnv("MASTER_ADDRESS", "master:50055"),
-		OtelCollectorAddr:  getEnv("OTEL_COLLECTOR_ADDR", "otel-collector.observability.svc.cluster.local:4317"),
+		KafkaBrokers:          strings.Split(kafkaBrokers, ","),
+		KafkaTopicRegex:       topicRegex,
+		KafkaGroupID:          groupID,
+		KafkaDLTTopic:         getEnv("KAFKA_DLT_TOPIC", "ingestion-dlt"),
+		SchemaRegistryHost:    getEnv("SCHEMA_REGISTRY_HOST", "schema-registry.datalake:8081"),
+		CatalogServiceAddress: getEnv("CATALOG_SERVICE_ADDRESS", "metadata-service:50055"),
+		MasterAddress:         getEnv("MASTER_ADDRESS", "master:50055"),
+		OtelCollectorAddr:     getEnv("OTEL_COLLECTOR_ADDR", "otel-collector.observability.svc.cluster.local:4317"),
 	}, nil
 }
 

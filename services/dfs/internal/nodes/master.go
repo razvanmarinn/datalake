@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,21 +59,34 @@ func (mn *MasterNode) appendToLog(op OperationLogEntry) error {
 }
 
 func NewMasterNode() *MasterNode {
+	f, err := os.OpenFile("master_op.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("Failed to open operation log: %v", err)
+	}
+
 	return &MasterNode{
 		ID:        uuid.New().String(),
 		Namespace: make(map[string]*Inode),
 		BlockMap:  make(map[uuid.UUID]*BlockMetadata),
+		opLogFile: f, // <--- Assign the file handle!
 	}
 }
+
 func NewMasterNodeWithState(state *MasterNodeState) *MasterNode {
 	if state.ID == "" {
 		return NewMasterNode()
+	}
+
+	f, err := os.OpenFile("master_op.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("Failed to open operation log: %v", err)
 	}
 
 	return &MasterNode{
 		ID:        state.ID,
 		Namespace: state.Namespace,
 		BlockMap:  state.BlockMap,
+		opLogFile: f, // <--- Assign the file handle!
 	}
 }
 
@@ -218,6 +232,11 @@ func (mn *MasterNode) AllocateBlock(req *coordinatorv1.AllocateBlockRequest) (*c
 
 	workerID, workerMeta := mn.LoadBalancer.GetNextClient()
 
+	workerUUID, err := uuid.Parse(workerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse worker uuid: %v", err)
+	}
+
 	fullAddress := fmt.Sprintf("%s:%d", workerMeta.Ip, workerMeta.Port)
 
 	targetNodes := []*commonv1.BlockLocation{
@@ -231,8 +250,10 @@ func (mn *MasterNode) AllocateBlock(req *coordinatorv1.AllocateBlockRequest) (*c
 	mn.BlockMap[newBlockID] = &BlockMetadata{
 		BlockID:  newBlockID,
 		Size:     req.SizeBytes,
-		Replicas: []uuid.UUID{}, // Will be filled when the DataNode confirms receipt or Client commits
+		Replicas: []uuid.UUID{workerUUID}, // <--- FIX: Store the worker immediately!
 	}
+
+	log.Printf("Allocated block %s to worker %s", newBlockID, workerID)
 
 	return &coordinatorv1.AllocateBlockResponse{
 		BlockId:         newBlockID.String(),
@@ -247,20 +268,22 @@ func (mn *MasterNode) CommitFile(req *coordinatorv1.CommitFileRequest) (*Inode, 
 	if req.ProjectId == "" || req.FilePath == "" {
 		return nil, fmt.Errorf("invalid project_id or file_path")
 	}
-
-	// Path Logic
-	fullPath := filepath.Join(req.ProjectId, req.FilePath)
+	fullPath := filepath.Clean(req.FilePath)
 	dirPath := filepath.Dir(fullPath)
 
-	// Ensure directories exist
-	mn.ensureDirectory(req.ProjectId, req.ProjectId, "system", req.ProjectId)
-	mn.ensureDirectory(dirPath, filepath.Base(dirPath), "system", req.ProjectId)
+	parts := strings.Split(fullPath, string(filepath.Separator))
+	if len(parts) > 0 {
+		rootDir := parts[0]
+		mn.ensureDirectory(rootDir, rootDir, "system", req.ProjectId)
+	}
 
+	if len(parts) > 2 {
+		mn.ensureDirectory(dirPath, filepath.Base(dirPath), "system", req.ProjectId)
+	}
 	var totalSize int64
 	blockUUIDs := make([]uuid.UUID, 0, len(req.Blocks))
 
 	for _, b := range req.Blocks {
-		// Parse UUID from the string in BlockInfo
 		bid, err := uuid.Parse(b.BlockId)
 		if err != nil {
 			return nil, fmt.Errorf("invalid block uuid %s: %v", b.BlockId, err)
@@ -269,7 +292,6 @@ func (mn *MasterNode) CommitFile(req *coordinatorv1.CommitFileRequest) (*Inode, 
 		blockUUIDs = append(blockUUIDs, bid)
 		totalSize += b.Size
 
-		// Update/Verify Block Metadata
 		if _, exists := mn.BlockMap[bid]; !exists {
 			mn.BlockMap[bid] = &BlockMetadata{
 				BlockID:  bid,
@@ -279,11 +301,10 @@ func (mn *MasterNode) CommitFile(req *coordinatorv1.CommitFileRequest) (*Inode, 
 		}
 	}
 
-	// Create Inode
 	inode := &Inode{
 		ID:        uuid.New().String(),
-		Name:      filepath.Base(fullPath),
-		Path:      fullPath,
+		Name:      filepath.Base(fullPath), // e.g. "hhh_2026.avro"
+		Path:      fullPath,                // e.g. "yes/hhh/hhh_2026.avro"
 		Type:      FileType,
 		ProjectID: req.ProjectId,
 		OwnerID:   req.OwnerId,
@@ -291,20 +312,21 @@ func (mn *MasterNode) CommitFile(req *coordinatorv1.CommitFileRequest) (*Inode, 
 		Blocks:    blockUUIDs,
 	}
 
-	// Log Operation
 	op := OperationLogEntry{
 		OpType:    OpRegisterFile,
 		Timestamp: time.Now().Unix(),
 		Payload:   inode,
 	}
 	if err := mn.appendToLog(op); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to write operation log: %w", err)
 	}
 
-	// Update Namespace
 	mn.Namespace[inode.Path] = inode
+
 	if parent, ok := mn.Namespace[dirPath]; ok {
 		parent.Children = append(parent.Children, inode.ID)
+	} else {
+		log.Printf("Warning: Parent directory %s not found for file %s", dirPath, inode.Path)
 	}
 
 	return inode, nil
@@ -358,18 +380,23 @@ func (mn *MasterNode) GetFileMetadata(projectID, filePath string) (*coordinatorv
 	}, nil
 }
 
-func (mn *MasterNode) ListFiles(projectID, prefix string) []string {
+func (mn *MasterNode) ListFiles(projectID, prefix string) ([]string, error) { // Updated to return error to match gRPC style usually
 	mn.lock.Lock()
 	defer mn.lock.Unlock()
 
 	var files []string
+
 	for _, inode := range mn.Namespace {
-		if inode.Type == FileType && inode.ProjectID == projectID {
+		if inode.Type == FileType {
 			relPath, err := filepath.Rel(projectID, inode.Path)
-			if err == nil && (prefix == "" || filepath.HasPrefix(relPath, prefix)) {
-				files = append(files, relPath)
+
+			if err == nil && !strings.HasPrefix(relPath, "..") {
+
+				if prefix == "" || strings.HasPrefix(relPath, prefix) {
+					files = append(files, relPath)
+				}
 			}
 		}
 	}
-	return files
+	return files, nil
 }

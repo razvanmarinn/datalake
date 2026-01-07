@@ -69,7 +69,7 @@ func (app *App) fetchProjectId(ctx context.Context, projectName string) (string,
 	ctx, span := app.Tracer.Start(ctx, "fetchProjectId")
 	defer span.End()
 
-	catalogConn, err := app.GrpcConnCache.Get(app.Config.SchemaRegistryHost)
+	catalogConn, err := app.GrpcConnCache.Get(app.Config.CatalogServiceAddress)
 	if err != nil {
 		return "", err
 	}

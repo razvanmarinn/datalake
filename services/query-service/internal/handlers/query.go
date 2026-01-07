@@ -163,7 +163,8 @@ func (h *QueryHandler) GetSchemaData(c *gin.Context) {
 
 	// 1. List Files
 	// Optimization: Pass schema name as prefix if your naming convention supports it (e.g. "project_schema_")
-	prefix := fmt.Sprintf("%s_%s", projectID, schemaName)
+	prefix := fmt.Sprintf("%s/", schemaName)
+
 	fileListResp, err := h.MasterClient.ListFiles(c.Request.Context(), projectID, prefix)
 	if err != nil {
 		h.logger.Error("Failed to fetch file list", zap.Error(err))
@@ -174,8 +175,8 @@ func (h *QueryHandler) GetSchemaData(c *gin.Context) {
 	var tableData []interface{}
 
 	for _, fileName := range fileListResp.FilePaths {
-		// Double check schema match (in case prefix match was partial)
-		if !isStackPartOfSchema(fileName, projectID, schemaName) {
+		// FIX 2: Use the updated validation logic
+		if !isStackPartOfSchema(fileName, schemaName) {
 			continue
 		}
 
@@ -227,9 +228,13 @@ func (h *QueryHandler) GetSchemaData(c *gin.Context) {
 	c.JSON(http.StatusOK, tableData)
 }
 
-func isStackPartOfSchema(filename, projectID string, schema string) bool {
-	expectedPrefix := fmt.Sprintf("%s_%s", projectID, schema)
-	return strings.Contains(filename, expectedPrefix)
+func isStackPartOfSchema(filename string, schema string) bool {
+
+	prefixDir := fmt.Sprintf("%s/", schema)
+
+	prefixFile := fmt.Sprintf("%s_", schema)
+
+	return strings.HasPrefix(filename, prefixDir) || strings.HasPrefix(filename, prefixFile)
 }
 
 func parseAvroOCF(data []byte) ([]interface{}, error) {

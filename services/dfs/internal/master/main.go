@@ -65,7 +65,11 @@ func (s *server) GetFileMetadata(ctx context.Context, req *coordinatorv1.GetFile
 
 // 4. ListFiles
 func (s *server) ListFiles(ctx context.Context, req *coordinatorv1.ListFilesRequest) (*coordinatorv1.ListFilesResponse, error) {
-	files := s.masterNode.ListFiles(req.ProjectId, req.DirectoryPrefix)
+	files, err := s.masterNode.ListFiles(req.ProjectId, req.DirectoryPrefix)
+	if err != nil {
+		s.logger.Error("ListFiles failed", zap.Error(err))
+		return nil, err
+	}
 	return &coordinatorv1.ListFilesResponse{FilePaths: files}, nil
 }
 

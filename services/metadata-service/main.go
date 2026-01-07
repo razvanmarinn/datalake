@@ -51,7 +51,7 @@ func main() {
 	}
 	catalogv1.RegisterCatalogServiceServer(grpcServer, metadataGRPCServer)
 
-	grpcPort := ":50051"
+	grpcPort := ":50056"
 	lis, err := net.Listen("tcp", grpcPort)
 	if err != nil {
 		logger.Fatal("Failed to listen for gRPC", zap.Error(err))

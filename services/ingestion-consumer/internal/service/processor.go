@@ -151,7 +151,7 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
 		return fmt.Errorf("datanode reported failure: %s", pushResp.Message)
 	}
 
-	fileName := fmt.Sprintf("%s/%s/%s_%s.avro", projectId, key, key, time.Now().Format("20060102150405"))
+	fileName := fmt.Sprintf("%s/%s/%s_%s.avro", projectName, key, key, time.Now().Format("20060102150405"))
 	app.Logger.Info("committing file", "file", fileName, "block_id", blockId)
 
 	_, err = masterClient.CommitFile(ctx, &coordinatorv1.CommitFileRequest{
