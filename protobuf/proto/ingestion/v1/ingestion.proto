@@ -3,17 +3,23 @@ package ingestion.v1;
 
 option go_package = "github.com/razvanmarinn/datalake/protobuf/gen/go/ingestion/v1;ingestionv1";
 
-service WorkerService {
-    rpc StoreBatchAvro(StoreBatchAvroRequest) returns (StoreBatchAvroResponse) {}
+service IngestionService {
+    rpc UploadBatch(stream UploadBatchRequest) returns (UploadBatchResponse);
 }
 
-message StoreBatchAvroRequest {
-    string batch_id = 1;
-    bytes avro_data = 2;
-    string owner_id = 3;
-    string project_id = 4;
+message UploadBatchRequest {
+    oneof data {
+        BatchHeader header = 1;
+        bytes chunk = 2;
+    }
 }
 
-message StoreBatchAvroResponse {
+message BatchHeader {
+    string project_id = 1;
+    string format = 2; // "AVRO", "PARQUET"
+}
+
+message UploadBatchResponse {
     bool success = 1;
+    int64 rows_processed = 2;
 }

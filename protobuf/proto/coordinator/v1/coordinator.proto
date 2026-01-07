@@ -1,0 +1,65 @@
+syntax = "proto3";
+package coordinator.v1;
+
+option go_package = "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1;coordinatorv1";
+
+import "common/v1/common.proto";
+
+service CoordinatorService {
+    rpc AllocateBlock(AllocateBlockRequest) returns (AllocateBlockResponse);
+    rpc CommitFile(CommitFileRequest) returns (CommitFileResponse);
+    rpc CommitCompaction(CommitCompactionRequest) returns (CommitCompactionResponse);
+    rpc GetFileMetadata(GetFileMetadataRequest) returns (GetFileMetadataResponse);
+    rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+}
+
+message AllocateBlockRequest {
+    int64 size_bytes = 1;
+    string project_id = 2; 
+}
+
+message AllocateBlockResponse {
+    string block_id = 1;
+    repeated common.v1.BlockLocation target_datanodes = 2; 
+}
+
+message CommitFileRequest {
+    string project_id = 1;
+    string file_path = 2;
+    repeated common.v1.BlockInfo blocks = 3;
+    string file_format = 4;
+    string owner_id = 5;
+}
+
+message CommitFileResponse {
+    bool success = 1;
+}
+
+message CommitCompactionRequest {
+    string project_id = 1;
+    repeated string old_file_paths = 2; 
+    CommitFileRequest new_file = 3;    
+}
+
+message CommitCompactionResponse {
+    bool success = 1;
+}
+
+message GetFileMetadataRequest {
+    string project_id = 1;
+    string file_path = 2;
+}
+
+message GetFileMetadataResponse {
+    repeated common.v1.BlockInfo blocks = 1;
+    map<string, common.v1.BlockLocation> locations = 2;
+}
+
+message ListFilesRequest {
+    string project_id = 1;
+    string directory_prefix = 2;
+}
+
+message ListFilesResponse {
+    repeated string file_paths = 1;
+}

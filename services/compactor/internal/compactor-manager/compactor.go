@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -13,7 +14,13 @@ import (
 	"time"
 
 	"github.com/linkedin/goavro/v2"
-	pb "github.com/razvanmarinn/datalake/protobuf"
+	
+	// NEW: Specific imports
+	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
+	commonv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/common/v1"
+	dfsv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/dfs/v1"
+	masterv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/master/v1"
+
 	"github.com/xitongsys/parquet-go-source/local"
 	"github.com/xitongsys/parquet-go/parquet"
 	"github.com/xitongsys/parquet-go/writer"
@@ -24,24 +31,25 @@ import (
 type Config struct {
 	StorageRoot    string
 	SchemaAPI      string
-	MetadataClient pb.MetadataServiceClient
+	CatalogClient  catalogv1.CatalogServiceClient // Renamed from MetadataClient
+	MasterClient   masterv1.MasterServiceClient   // Needed to commit the final file
 }
 
 type Compactor struct {
 	config         Config
-	dfsClientCache map[string]pb.DfsServiceClient
+	dfsClientCache map[string]dfsv1.DfsServiceClient
 	cacheLock      sync.Mutex
 }
 
 func NewCompactor(cfg Config) *Compactor {
 	return &Compactor{
 		config:         cfg,
-		dfsClientCache: make(map[string]pb.DfsServiceClient),
+		dfsClientCache: make(map[string]dfsv1.DfsServiceClient),
 	}
 }
 
-// DfsClientCache management
-func (c *Compactor) getDfsClient(addr string) (pb.DfsServiceClient, error) {
+// Helper: Connect to a DataNode
+func (c *Compactor) getDfsClient(addr string) (dfsv1.DfsServiceClient, error) {
 	c.cacheLock.Lock()
 	defer c.cacheLock.Unlock()
 
@@ -49,12 +57,13 @@ func (c *Compactor) getDfsClient(addr string) (pb.DfsServiceClient, error) {
 		return client, nil
 	}
 
+	// addr should be "IP:Port"
 	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to DFS worker at %s: %w", addr, err)
 	}
 
-	client := pb.NewDfsServiceClient(conn)
+	client := dfsv1.NewDfsServiceClient(conn)
 	c.dfsClientCache[addr] = client
 	return client, nil
 }
@@ -73,104 +82,174 @@ func (c *Compactor) FetchSchema(project, schemaName string) (*FetchSchemaRespons
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("schema api error: status %d for project %s, schema %s", resp.StatusCode, project, schemaName)
+		return nil, fmt.Errorf("schema api error: status %d", resp.StatusCode)
 	}
 
 	var schemaRes FetchSchemaResponse
 	if err := json.NewDecoder(resp.Body).Decode(&schemaRes); err != nil {
 		return nil, fmt.Errorf("failed to decode schema response: %w", err)
 	}
-	if schemaRes.AvroSchema == "" || schemaRes.ParquetSchema == "" {
-		return nil, fmt.Errorf("received incomplete schema definitions")
-	}
 	return &schemaRes, nil
 }
 
-func (c *Compactor) Compact(ctx context.Context, job *pb.CompactionJob) (err error) {
-	// 1. Update job status to 'in_progress'
-	_, err = c.config.MetadataClient.UpdateCompactionJobStatus(ctx, &pb.UpdateCompactionJobStatusRequest{
-		JobId:  job.Id,
-		Status: "in_progress",
+// Compact runs the full cycle: Fetch Job -> Read Blocks (Stream) -> Write Parquet -> Commit
+func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string, schemaName string, targetFiles []string) error {
+	// 1. Update job status to 'RUNNING'
+	// Note: We use the Catalog for job tracking
+	_, err := c.config.CatalogClient.UpdateJobStatus(ctx, &catalogv1.UpdateJobStatusRequest{
+		JobId:  jobID,
+		Status: "RUNNING",
 	})
 	if err != nil {
-		return fmt.Errorf("failed to update job status to in_progress: %w", err)
+		return fmt.Errorf("failed to update job status: %w", err)
 	}
 
-	// Defer a function to handle job completion/failure
+	// Defer final status update
+	var finalErr error
 	defer func() {
-		status := "completed"
-		if err != nil {
-			status = "failed"
+		status := "COMPLETED"
+		if finalErr != nil {
+			status = "FAILED"
 		}
-		_, updateErr := c.config.MetadataClient.UpdateCompactionJobStatus(context.Background(), &pb.UpdateCompactionJobStatusRequest{
-			JobId:  job.Id,
+		c.config.CatalogClient.UpdateJobStatus(context.Background(), &catalogv1.UpdateJobStatusRequest{
+			JobId:  jobID,
 			Status: status,
 		})
-		if updateErr != nil {
-			log.Printf("CRITICAL: Failed to update final job status for job %s: %v", job.Id, updateErr)
-		}
 	}()
 
-	// 2. Define output path
-	compactedFolder := filepath.Join(c.config.StorageRoot, job.ProjectId, job.SchemaName, "compacted")
+	// 2. Prepare Local Output
+	// In a real system, we would stream this back to DFS, but for now we write locally then upload
+	compactedFileName := fmt.Sprintf("compacted-%d.parquet", time.Now().Unix())
+	compactedFolder := filepath.Join(c.config.StorageRoot, projectID, schemaName, "compacted")
 	os.MkdirAll(compactedFolder, 0755)
-	outPath := filepath.Join(compactedFolder, fmt.Sprintf("compacted-%d.parquet", time.Now().Unix()))
+	localOutPath := filepath.Join(compactedFolder, compactedFileName)
 
-	// 3. Fetch schemas
-	schemas, err := c.FetchSchema(job.ProjectId, job.SchemaName)
+	// 3. Fetch Schemas
+	schemas, err := c.FetchSchema(projectID, schemaName)
 	if err != nil {
-		return fmt.Errorf("failed to fetch schemas: %w", err)
+		finalErr = err
+		return err
 	}
 
-	// 4. Setup Parquet writer
-	fw, err := local.NewLocalFileWriter(outPath)
+	// 4. Init Parquet Writer
+	fw, err := local.NewLocalFileWriter(localOutPath)
 	if err != nil {
-		return fmt.Errorf("failed to create local file writer: %w", err)
+		finalErr = err
+		return err
 	}
 	defer fw.Close()
 
 	pw, err := writer.NewJSONWriter(schemas.ParquetSchema, fw, 4)
 	if err != nil {
-		return fmt.Errorf("failed to init parquet writer: %w", err)
+		finalErr = err
+		return err
 	}
 	pw.CompressionType = parquet.CompressionCodec_SNAPPY
 
-	// 5. Get block locations
-	locResp, err := c.config.MetadataClient.GetBlockLocations(ctx, &pb.GetBlockLocationsRequest{BlockIds: job.TargetBlockIds})
-	if err != nil {
-		return fmt.Errorf("failed to get block locations: %w", err)
-	}
-
-	// 6. Process blocks
-	for _, loc := range locResp.Locations {
-		dfsClient, err := c.getDfsClient(loc.WorkerId) // Assuming WorkerId is the address
+	// 5. Iterate over files and blocks
+	// We need to ask the Master where these files are located
+	for _, filePath := range targetFiles {
+		metaResp, err := c.config.MasterClient.GetFileMetadata(ctx, &masterv1.GetFileMetadataRequest{
+			ProjectId: projectID,
+			FilePath:  filePath,
+		})
 		if err != nil {
-			return fmt.Errorf("failed to get DFS client for worker %s: %w", loc.WorkerId, err)
-		}
-
-		blockResp, err := dfsClient.GetBlock(ctx, &pb.GetBlockRequest{BlockId: loc.BlockId})
-		if err != nil {
-			log.Printf("Warning: failed to get block %s from worker %s: %v", loc.BlockId, loc.WorkerId, err)
+			log.Printf("Skipping file %s: %v", filePath, err)
 			continue
 		}
 
-		if err := c.streamAvroToParquet(blockResp.Data, pw); err != nil {
-			log.Printf("Error processing block %s: %v", loc.BlockId, err)
-			continue
+		// Process each block in the file
+		for _, block := range metaResp.Blocks {
+			locations, ok := metaResp.Locations[block.BlockId]
+			if !ok {
+				log.Printf("No location found for block %s", block.BlockId)
+				continue
+			}
+
+			// Try to read from the first available worker
+			// In production, you'd loop through locations if one fails
+			workerAddr := locations.Address // This comes from our new Common proto
+
+			dfsClient, err := c.getDfsClient(workerAddr)
+			if err != nil {
+				log.Printf("Failed to connect to worker %s: %v", workerAddr, err)
+				continue
+			}
+
+			// 6. STREAMING READ (Key Change)
+			data, err := c.streamBlockFromWorker(ctx, dfsClient, block.BlockId)
+			if err != nil {
+				log.Printf("Failed to stream block %s: %v", block.BlockId, err)
+				continue
+			}
+
+			// 7. Convert Avro -> Parquet
+			if err := c.appendAvroToParquet(data, pw); err != nil {
+				log.Printf("Conversion error on block %s: %v", block.BlockId, err)
+			}
 		}
 	}
 
-	// 7. Finalize Parquet File
 	if err := pw.WriteStop(); err != nil {
-		return fmt.Errorf("failed to stop parquet writer: %w", err)
+		finalErr = err
+		return err
 	}
 
-	log.Printf("✅ Compacted %d blocks into %s", len(locResp.Locations), outPath)
+	fw.Close() // Ensure file is flushed to disk
+
+	// 8. Upload the new compacted file to DFS
+	// (Simulated here: In reality, you would stream 'localOutPath' to 'dfsClient.PushBlock')
+	// For this example, we assume we just register the local file or upload it.
+	// Let's assume we upload it and get a file info back.
+	
+	// ... Upload logic here ...
+
+	// 9. Commit Atomic Swap on Master
+	// This tells the Master: "Delete the old small files, replace them with this big one"
+	_, err = c.config.MasterClient.CommitCompaction(ctx, &masterv1.CommitCompactionRequest{
+		ProjectId:    projectID,
+		OldFilePaths: targetFiles,
+		NewFile: &masterv1.CommitFileRequest{
+			ProjectId:  projectID,
+			FilePath:   filepath.Join(schemaName, compactedFileName),
+			FileFormat: "parquet",
+			// You would calculate the blocks of the new file here
+			Blocks: []*commonv1.BlockInfo{}, 
+		},
+	})
+
+	if err != nil {
+		finalErr = err
+		return fmt.Errorf("failed to commit compaction: %w", err)
+	}
+
+	log.Printf("✅ Compacted %d files into %s", len(targetFiles), localOutPath)
 	return nil
 }
 
-// streamAvroToParquet reads records from a byte slice and pushes them to the shared writer
-func (c *Compactor) streamAvroToParquet(data []byte, pw *writer.JSONWriter) error {
+// streamBlockFromWorker handles the gRPC streaming to fetch data
+func (c *Compactor) streamBlockFromWorker(ctx context.Context, client dfsv1.DfsServiceClient, blockID string) ([]byte, error) {
+	stream, err := client.FetchBlock(ctx, &dfsv1.FetchBlockRequest{BlockId: blockID})
+	if err != nil {
+		return nil, err
+	}
+
+	var dataBuffer bytes.Buffer
+	for {
+		resp, err := stream.Recv()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		// Accumulate chunks
+		dataBuffer.Write(resp.Chunk)
+	}
+	return dataBuffer.Bytes(), nil
+}
+
+func (c *Compactor) appendAvroToParquet(data []byte, pw *writer.JSONWriter) error {
 	r := bytes.NewReader(data)
 	ocfr, err := goavro.NewOCFReader(r)
 	if err != nil {

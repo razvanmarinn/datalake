@@ -5,34 +5,65 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
-	pb "github.com/razvanmarinn/datalake/protobuf"
+	datanodev1 "github.com/razvanmarinn/datalake/protobuf/gen/go/datanode/v1"
 	"github.com/razvanmarinn/dfs/internal/nodes"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 )
 
+const (
+	defaultPort = 50051
+	storageDir  = "/data"
+)
+
 func main() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	log.Println("Starting worker node...")
+
+	portStr := os.Getenv("GRPC_PORT")
+	port := defaultPort
+
+	if portStr != "" {
+		cleanPort := strings.TrimPrefix(portStr, ":")
+		p, err := strconv.Atoi(cleanPort)
+		if err != nil {
+			log.Fatalf("Invalid GRPC_PORT: %v", err)
+		}
+		port = p
+	}
+
+	listenAddr := ":" + strconv.Itoa(port)
 
 	state := nodes.NewWorkerNodeState()
 
 	if err := state.LoadStateFromFile(); err != nil {
-		log.Fatalf("failed to load state: %v", err)
+		log.Printf("No existing state found or failed to load, starting fresh: %v", err)
 	}
-	address := os.Getenv("GRPC_PORT")
-	if address == "" {
-		address = ":50051"
+
+	worker := nodes.NewWorkerNode(storageDir, port)
+
+	if state.ID != "" {
+		log.Printf("Restoring previous Worker ID: %s", state.ID)
+		worker.ID = state.ID
+	} else {
+		log.Printf("Initialized new Worker ID: %s", worker.ID)
 	}
-	lis, err := net.Listen("tcp", address)
+
+	worker.Start()
+
+	lis, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	log.Printf("Worker node listening on %s", address)
+	log.Printf("Worker node listening on %s", listenAddr)
 
 	opts := []grpc.ServerOption{
 		grpc.MaxRecvMsgSize(64 * 1024 * 1024),
@@ -46,12 +77,8 @@ func main() {
 
 	grpcServer := grpc.NewServer(opts...)
 
-	worker := nodes.NewWorkerNodeWithState(state)
-	worker.Start()
+	datanodev1.RegisterDataNodeServiceServer(grpcServer, worker)
 
-	state.SetID(worker.ID)
-
-	pb.RegisterDfsServiceServer(grpcServer, worker)
 	go func() {
 		log.Println("Starting gRPC server...")
 		if err := grpcServer.Serve(lis); err != nil {
@@ -72,14 +99,16 @@ func main() {
 		log.Printf("Received signal: %v", sig)
 		log.Println("Shutting down worker node...")
 
-		if _, err := state.UpdateState(worker); err != nil {
+		if err := state.UpdateState(worker); err != nil {
 			log.Printf("failed to update state: %v", err)
 		}
+
 		if err := state.SaveState(); err != nil {
 			log.Printf("failed to save state: %v", err)
 		}
 
 		grpcServer.GracefulStop()
+		worker.Stop()
 		log.Println("Worker node stopped")
 	}()
 

@@ -2,176 +2,122 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"go.uber.org/zap"
-
-	"github.com/google/uuid"
-	pb "github.com/razvanmarinn/datalake/protobuf"
-	"github.com/razvanmarinn/dfs/internal/nodes"
-
 	"google.golang.org/grpc"
+
+	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
+	"github.com/razvanmarinn/dfs/internal/nodes"
 )
 
 const (
-	port      = ":50055"
-	stateFile = "master_node_state.json"
+	port = ":50055"
 )
 
 type server struct {
-	pb.UnimplementedMasterServiceServer
+	coordinatorv1.UnimplementedCoordinatorServiceServer
 	masterNode *nodes.MasterNode
 	logger     *logging.Logger
 }
 
-func (s *server) RegisterFile(ctx context.Context, in *pb.ClientFileRequestToMaster) (*pb.MasterFileResponse, error) {
-	inode := s.masterNode.RegisterFile(in)
+func (s *server) AllocateBlock(ctx context.Context, req *coordinatorv1.AllocateBlockRequest) (*coordinatorv1.AllocateBlockResponse, error) {
+	s.logger.Info("Received AllocateBlock request",
+		zap.String("project_id", req.ProjectId),
+		zap.Int64("size", req.SizeBytes))
 
-	s.logger.Info("File registered successfully",
-		zap.String("file_name", inode.Name),
-		zap.String("file_id", inode.ID))
-
-	return &pb.MasterFileResponse{Success: true}, nil
-}
-
-func (s *server) GetBatchDestination(ctx context.Context, in *pb.ClientBlockRequestToMaster) (*pb.MasterResponse, error) {
-	s.logger.Info("Received GetBatchDestination request for batch", zap.String("batch_id", in.GetBlockId()))
-
-	wid, wm := s.masterNode.LoadBalancer.GetNextClient()
-
-	blockUUID, err := uuid.Parse(in.GetBlockId())
+	resp, err := s.masterNode.AllocateBlock(req)
 	if err != nil {
-		s.logger.Error("Invalid block ID format", zap.String("block_id", in.GetBlockId()), zap.Error(err))
+		s.logger.Error("Allocation failed", zap.Error(err))
 		return nil, err
 	}
-
-	// This updates the BlockMap in the master node
-	s.masterNode.UpdateBatchLocation(blockUUID, wid)
-
-	return &pb.MasterResponse{WorkerIp: wm.Ip, WorkerPort: wm.Port}, nil
+	return resp, nil
 }
 
-func (s *server) GetMetadata(ctx context.Context, in *pb.Location) (*pb.MasterMetadataResponse, error) {
-	s.logger.Info("Received GetMetadata request for file", zap.String("file_name", in.GetFileName()))
+// 2. CommitFile
+func (s *server) CommitFile(ctx context.Context, req *coordinatorv1.CommitFileRequest) (*coordinatorv1.CommitFileResponse, error) {
+	s.logger.Info("Received CommitFile request", zap.String("file_path", req.FilePath))
 
-	blockUUIDs := s.masterNode.GetFileBatches(in.GetFileName())
-	if blockUUIDs == nil {
-		return &pb.MasterMetadataResponse{}, fmt.Errorf("file not found: %s", in.GetFileName())
+	_, err := s.masterNode.CommitFile(req)
+	if err != nil {
+		s.logger.Error("Commit failed", zap.Error(err))
+		return &coordinatorv1.CommitFileResponse{Success: false}, err
 	}
 
-	batchIds := make([]string, len(blockUUIDs))
-	for i, id := range blockUUIDs {
-		batchIds[i] = id.String()
-	}
-
-	batchLocations := make(map[string]*pb.BlockLocation)
-
-	for _, bId := range blockUUIDs {
-		workerNodeUUIDs := s.masterNode.GetBatchLocations(bId)
-		workerAddresses := make([]string, 0)
-
-		for _, wId := range workerNodeUUIDs {
-			_, ip, port, err := s.masterNode.LoadBalancer.GetClientByWorkerID(wId.String())
-			if err != nil {
-				s.logger.Error("Error getting client for worker ID", zap.String("worker_id", wId.String()), zap.Error(err))
-				continue
-			}
-			address := fmt.Sprintf("%s:%d", ip, port)
-			workerAddresses = append(workerAddresses, address)
-		}
-
-		batchLocations[bId.String()] = &pb.BlockLocation{
-			WorkerIds: workerAddresses,
-		}
-	}
-
-	return &pb.MasterMetadataResponse{
-		BlockIds:       batchIds,
-		BlockLocations: batchLocations,
-	}, nil
+	return &coordinatorv1.CommitFileResponse{Success: true}, nil
 }
 
-func (s *server) GetFileListForProject(ctx context.Context, in *pb.ApiRequestForFileList) (*pb.FileListResponse, error) {
-	log.Printf("GetFileListForProject called with OwnerID=%s, ProjectID=%s", in.OwnerId, in.ProjectId)
+// 3. GetFileMetadata
+func (s *server) GetFileMetadata(ctx context.Context, req *coordinatorv1.GetFileMetadataRequest) (*coordinatorv1.GetFileMetadataResponse, error) {
+	s.logger.Info("Received GetFileMetadata request", zap.String("file_path", req.FilePath))
 
-	s.masterNode.Lock() // Assuming you exported the lock or added a Lock/Unlock method.
-
-	fileList := make([]string, 0)
-
-	for _, inode := range s.masterNode.Namespace {
-		if inode.OwnerID == in.OwnerId && inode.ProjectID == in.ProjectId {
-			fileList = append(fileList, inode.Name)
-		}
+	resp, err := s.masterNode.GetFileMetadata(req.ProjectId, req.FilePath)
+	if err != nil {
+		s.logger.Error("Metadata retrieval failed", zap.Error(err))
+		return nil, err
 	}
+	return resp, nil
+}
 
-	log.Printf("Total files found: %d", len(fileList))
-	return &pb.FileListResponse{FileListNames: fileList}, nil
+// 4. ListFiles
+func (s *server) ListFiles(ctx context.Context, req *coordinatorv1.ListFilesRequest) (*coordinatorv1.ListFilesResponse, error) {
+	files := s.masterNode.ListFiles(req.ProjectId, req.DirectoryPrefix)
+	return &coordinatorv1.ListFilesResponse{FilePaths: files}, nil
+}
+
+// 5. CommitCompaction (Stub)
+func (s *server) CommitCompaction(ctx context.Context, req *coordinatorv1.CommitCompactionRequest) (*coordinatorv1.CommitCompactionResponse, error) {
+	return &coordinatorv1.CommitCompactionResponse{Success: true}, nil
 }
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	log.SetOutput(os.Stdout)
-
 	logger := logging.NewDefaultLogger("master_node")
 	defer logger.Sync()
 
+	// Initialize State and MasterNode
 	state := nodes.NewMasterNodeState()
+	_ = state.LoadStateFromFile() // Handle error properly in prod
+
 	masterNode := nodes.GetMasterNodeInstance()
 
-	masterNode.InitializeLoadBalancer(3, 50051)
+	// IMPORTANT: Initialize LoadBalancer before starting server
+	if err := masterNode.InitializeLoadBalancer(3, 50051); err != nil {
+		logger.Fatal("Failed to init load balancer", zap.Error(err))
+	}
 	defer masterNode.CloseLoadBalancer()
 
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		logger.Fatal("Failed to listen", zap.Error(err))
 	}
 
 	s := grpc.NewServer()
-	pb.RegisterMasterServiceServer(s, &server{
+
+	// Register the Coordinator Service
+	coordinatorv1.RegisterCoordinatorServiceServer(s, &server{
 		masterNode: masterNode,
 		logger:     logger,
 	})
 
-	logger.Info("gRPC server listening", zap.String("address", lis.Addr().String()))
+	logger.Info("Coordinator Service listening", zap.String("address", port))
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
+	// Graceful Shutdown Logic
 	go func() {
-		defer wg.Done()
-		if err := s.Serve(lis); err != nil {
-			logger.Error("gRPC server failed", zap.Error(err))
-		}
-	}()
-
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigs
-		logger.Info("Received signal, shutting down", zap.String("signal", sig.String()))
-		logger.Info("Shutting down master node and gRPC server")
-
-		state.UpdateState(masterNode)
-
-		if err := state.SaveState(); err != nil {
-			logger.Error("Failed to save master node state", zap.Error(err))
-		}
-
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+		<-sigs
+		logger.Info("Shutting down...")
 		s.GracefulStop()
 		masterNode.Stop()
-		logger.Info("Master node and gRPC server stopped")
-		wg.Done()
 	}()
 
-	logger.Info("Master node and gRPC server are running. Press Ctrl+C to stop.")
-	wg.Wait()
-	logger.Info("Main function exiting")
+	if err := s.Serve(lis); err != nil {
+		logger.Fatal("Server failed", zap.Error(err))
+	}
 }

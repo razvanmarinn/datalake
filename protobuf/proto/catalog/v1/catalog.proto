@@ -1,0 +1,45 @@
+syntax = "proto3";
+package catalog.v1;
+
+option go_package = "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1;catalogv1";
+
+import "google/protobuf/timestamp.proto";
+
+service CatalogService {
+    // Project Management
+    rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
+
+    // Job Management (Compaction, etc.)
+    rpc PollCompactionJobs(PollCompactionJobsRequest) returns (PollCompactionJobsResponse);
+    rpc UpdateJobStatus(UpdateJobStatusRequest) returns (UpdateJobStatusResponse);
+}
+
+message GetProjectRequest {
+    string project_id = 1;
+}
+
+message GetProjectResponse {
+    string project_id = 1;
+    string owner_id = 2;
+    google.protobuf.Timestamp created_at = 3;
+}
+
+message PollCompactionJobsRequest {
+    string worker_id = 1;
+}
+
+message PollCompactionJobsResponse {
+    string job_id = 1;
+    string project_id = 2;
+    repeated string target_files = 3;
+}
+
+message UpdateJobStatusRequest {
+    string job_id = 1;
+    string status = 2; // e.g., "COMPLETED", "FAILED"
+    string result_file_path = 3;
+}
+
+message UpdateJobStatusResponse {
+    bool success = 1;
+}
