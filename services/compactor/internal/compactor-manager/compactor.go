@@ -18,8 +18,8 @@ import (
 	// NEW: Specific imports
 	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
 	commonv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/common/v1"
-	dfsv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/dfs/v1"
-	masterv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/master/v1"
+	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
+	datanodev1 "github.com/razvanmarinn/datalake/protobuf/gen/go/datanode/v1"
 
 	"github.com/xitongsys/parquet-go-source/local"
 	"github.com/xitongsys/parquet-go/parquet"
@@ -32,28 +32,28 @@ type Config struct {
 	StorageRoot    string
 	SchemaAPI      string
 	CatalogClient  catalogv1.CatalogServiceClient // Renamed from MetadataClient
-	MasterClient   masterv1.MasterServiceClient   // Needed to commit the final file
+	MasterClient   coordinatorv1.CoordinatorServiceClient   // Needed to commit the final file
 }
 
 type Compactor struct {
 	config         Config
-	dfsClientCache map[string]dfsv1.DfsServiceClient
+	dataNodeClientCache map[string]datanodev1.DataNodeServiceClient
 	cacheLock      sync.Mutex
 }
 
 func NewCompactor(cfg Config) *Compactor {
 	return &Compactor{
 		config:         cfg,
-		dfsClientCache: make(map[string]dfsv1.DfsServiceClient),
+		dataNodeClientCache: make(map[string]datanodev1.DataNodeServiceClient),
 	}
 }
 
 // Helper: Connect to a DataNode
-func (c *Compactor) getDfsClient(addr string) (dfsv1.DfsServiceClient, error) {
+func (c *Compactor) getDfsClient(addr string) (datanodev1.DataNodeServiceClient, error) {
 	c.cacheLock.Lock()
 	defer c.cacheLock.Unlock()
 
-	if client, ok := c.dfsClientCache[addr]; ok {
+	if client, ok := c.dataNodeClientCache[addr]; ok {
 		return client, nil
 	}
 
@@ -63,8 +63,8 @@ func (c *Compactor) getDfsClient(addr string) (dfsv1.DfsServiceClient, error) {
 		return nil, fmt.Errorf("failed to connect to DFS worker at %s: %w", addr, err)
 	}
 
-	client := dfsv1.NewDfsServiceClient(conn)
-	c.dfsClientCache[addr] = client
+	client := datanodev1.NewDataNodeServiceClient(conn)
+	c.dataNodeClientCache[addr] = client
 	return client, nil
 }
 
@@ -149,7 +149,7 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 	// 5. Iterate over files and blocks
 	// We need to ask the Master where these files are located
 	for _, filePath := range targetFiles {
-		metaResp, err := c.config.MasterClient.GetFileMetadata(ctx, &masterv1.GetFileMetadataRequest{
+		metaResp, err := c.config.MasterClient.GetFileMetadata(ctx, &coordinatorv1.GetFileMetadataRequest{
 			ProjectId: projectID,
 			FilePath:  filePath,
 		})
@@ -206,14 +206,13 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 
 	// 9. Commit Atomic Swap on Master
 	// This tells the Master: "Delete the old small files, replace them with this big one"
-	_, err = c.config.MasterClient.CommitCompaction(ctx, &masterv1.CommitCompactionRequest{
+	_, err = c.config.MasterClient.CommitCompaction(ctx, &coordinatorv1.CommitCompactionRequest{
 		ProjectId:    projectID,
 		OldFilePaths: targetFiles,
-		NewFile: &masterv1.CommitFileRequest{
+		NewFile: &coordinatorv1.CommitFileRequest{
 			ProjectId:  projectID,
 			FilePath:   filepath.Join(schemaName, compactedFileName),
 			FileFormat: "parquet",
-			// You would calculate the blocks of the new file here
 			Blocks: []*commonv1.BlockInfo{}, 
 		},
 	})
@@ -227,9 +226,8 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 	return nil
 }
 
-// streamBlockFromWorker handles the gRPC streaming to fetch data
-func (c *Compactor) streamBlockFromWorker(ctx context.Context, client dfsv1.DfsServiceClient, blockID string) ([]byte, error) {
-	stream, err := client.FetchBlock(ctx, &dfsv1.FetchBlockRequest{BlockId: blockID})
+func (c *Compactor) streamBlockFromWorker(ctx context.Context, client datanodev1.DataNodeServiceClient, blockID string) ([]byte, error) {
+	stream, err := client.FetchBlock(ctx, &datanodev1.FetchBlockRequest{BlockId: blockID})
 	if err != nil {
 		return nil, err
 	}

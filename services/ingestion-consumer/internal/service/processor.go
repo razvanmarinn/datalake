@@ -4,17 +4,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"sort"
 	"sync"
 	"time"
 
-	pb "github.com/razvanmarinn/datalake/protobuf"
+	commonv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/common/v1"
+	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
+
+	datanodev1 "github.com/razvanmarinn/datalake/protobuf/gen/go/datanode/v1"
 	"github.com/razvanmarinn/ingestion_consumer/internal/batcher"
 	"github.com/razvanmarinn/ingestion_consumer/internal/infra"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	ChunkSize = 2 * 1024 * 1024
 )
 
 var consumerMu sync.Mutex
@@ -48,6 +56,7 @@ func (app *App) FlushBatch(parentCtx context.Context, trigger string) {
 		app.Logger.Error("failed to dispatch batch", "error", err)
 	}
 }
+
 func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) error {
 	if len(batch.Messages) == 0 {
 		return nil
@@ -65,64 +74,106 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
 	if err != nil {
 		return err
 	}
+	dataSize := int64(len(avroBytes))
 
 	masterConn, err := app.GrpcConnCache.Get(app.Config.MasterAddress)
 	if err != nil {
 		return err
 	}
-	masterClient := pb.NewMasterServiceClient(masterConn)
+	masterClient := coordinatorv1.NewCoordinatorServiceClient(masterConn)
 
-	fileName := fmt.Sprintf("%s_%s_%s.avro", projectId, key, time.Now().Format("20060102150405"))
+	allocResp, err := masterClient.AllocateBlock(ctx, &coordinatorv1.AllocateBlockRequest{
+		ProjectId: projectId,
+		SizeBytes: dataSize,
+	})
+	if err != nil {
+		return fmt.Errorf("allocate block failed: %w", err)
+	}
 
-	app.Logger.Info("registering file with master", "file", fileName, "batches", 1)
-	
-	_, err = masterClient.RegisterFile(ctx, &pb.ClientFileRequestToMaster{
-		FileName:   fileName,
-		OwnerId:    batch.Messages[0].OwnerId,
-		ProjectId:  batch.Messages[0].ProjectId,
-		FileFormat: "avro",
-		FileSize:   int64(len(avroBytes)),
-		BlockInfo: &pb.BlockList{
-			Blocks: []*pb.BlockInfo{
-				{Uuid: batch.UUID.String(), Size: int64(len(avroBytes))},
+	blockId := allocResp.BlockId
+	targets := allocResp.TargetDatanodes
+
+	if len(targets) == 0 {
+		return fmt.Errorf("no target datanodes allocated for block %s", blockId)
+	}
+
+	target := targets[0]
+	workerConn, err := app.GrpcConnCache.Get(target.Address)
+	if err != nil {
+		return fmt.Errorf("failed to connect to datanode %s: %w", target.Address, err)
+	}
+
+	workerClient := datanodev1.NewDataNodeServiceClient(workerConn)
+	stream, err := workerClient.PushBlock(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to open stream to datanode: %w", err)
+	}
+
+	err = stream.Send(&datanodev1.PushBlockRequest{
+		Data: &datanodev1.PushBlockRequest_Metadata{
+			Metadata: &datanodev1.BlockMetadata{
+				BlockId:   blockId,
+				TotalSize: dataSize,
 			},
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("master register failed: %w", err)
+		return fmt.Errorf("failed to send block metadata: %w", err)
 	}
 
-	dest, err := masterClient.GetBatchDestination(ctx, &pb.ClientBlockRequestToMaster{
-		BlockId:   batch.UUID.String(),
-		BlockSize: int64(len(batch.Messages)),
-	})
+	for i := 0; i < len(avroBytes); i += ChunkSize {
+		end := i + ChunkSize
+		if end > len(avroBytes) {
+			end = len(avroBytes)
+		}
+
+		err = stream.Send(&datanodev1.PushBlockRequest{
+			Data: &datanodev1.PushBlockRequest_Chunk{
+				Chunk: avroBytes[i:end],
+			},
+		})
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to send chunk: %w", err)
+		}
+	}
+
+	pushResp, err := stream.CloseAndRecv()
 	if err != nil {
-		return fmt.Errorf("destination lookup failed: %w", err)
+		return fmt.Errorf("failed to close stream/recv response: %w", err)
+	}
+	if !pushResp.Success {
+		return fmt.Errorf("datanode reported failure: %s", pushResp.Message)
 	}
 
-	workerAddr := fmt.Sprintf("%s:%d", dest.WorkerIp, dest.WorkerPort)
-	workerConn, err := app.GrpcConnCache.Get(workerAddr)
-	if err != nil {
-		return err
-	}
+	fileName := fmt.Sprintf("%s/%s/%s_%s.avro", projectId, key, key, time.Now().Format("20060102150405"))
+	app.Logger.Info("committing file", "file", fileName, "block_id", blockId)
 
-	workerClient := pb.NewDfsServiceClient(workerConn)
-	_, err = workerClient.StoreBlock(ctx, &pb.StoreBlockRequest{
+	_, err = masterClient.CommitFile(ctx, &coordinatorv1.CommitFileRequest{
 		ProjectId:  projectId,
-		SchemaName: key,
-		BlockId:    batch.UUID.String(),
-		Data:       avroBytes,
+		OwnerId:    batch.Messages[0].OwnerId,
+		FilePath:   fileName,
+		FileFormat: "avro",
+		Blocks: []*commonv1.BlockInfo{
+			{
+				BlockId: blockId,
+				Size:    dataSize,
+			},
+		},
 	})
+	if err != nil {
+		return fmt.Errorf("commit file failed: %w", err)
+	}
 
-	
-
-	return err
+	return nil
 }
 
-func (app *App)  consumeUntilChange(ctx context.Context, currentTopics []string) {
+func (app *App) consumeUntilChange(ctx context.Context, currentTopics []string) {
 	consumerMu.Lock()
 	defer consumerMu.Unlock()
-  
+
 	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers":               app.Config.KafkaBrokers[0],
 		"group.id":                        app.Config.KafkaGroupID + "-v2",
@@ -167,7 +218,7 @@ func (app *App)  consumeUntilChange(ctx context.Context, currentTopics []string)
 				sort.Strings(newTopics)
 				if !reflect.DeepEqual(currentTopics, newTopics) {
 					app.Logger.Info("topic change detected", "old", currentTopics, "new", newTopics)
-					cancel()
+					cancel() // Trigger reconnection
 					return
 				}
 			}
@@ -201,7 +252,6 @@ func (app *App)  consumeUntilChange(ctx context.Context, currentTopics []string)
 				if err != nil {
 					var kerr kafka.Error
 					if errors.As(err, &kerr) && kerr.Code() == kafka.ErrNoOffset {
-						// ignore: no offset committed yet
 					} else {
 						app.Logger.Error("commit failed", "error", err)
 					}
@@ -209,7 +259,7 @@ func (app *App)  consumeUntilChange(ctx context.Context, currentTopics []string)
 
 			case kafka.Error:
 				app.Logger.Error("kafka error", "error", e)
-				if e.IsFatal() {
+				if e.Code() == kafka.ErrAllBrokersDown {
 					return
 				}
 			}

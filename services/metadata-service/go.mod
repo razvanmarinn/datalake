@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.10.9
 	github.com/linkedin/goavro/v2 v2.13.1
-	github.com/razvanmarinn/datalake v0.0.0-20260106205032-93fcb695f126
+	github.com/razvanmarinn/datalake v0.0.0-20260107154359-080f4f15f641
 	github.com/segmentio/kafka-go v0.4.49
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.72.2

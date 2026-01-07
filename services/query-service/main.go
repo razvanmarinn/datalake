@@ -62,9 +62,9 @@ func main() {
 	}
 	defer masterClient.Close()
 
-	workerClients := make(map[string]*i_grpc.WorkerClient)
+	workerClients := make(map[string]*i_grpc.DataNodeClient)
 	for _, addr := range strings.Split(workerAddresses, ",") {
-		client, err := i_grpc.NewWorkerClient(addr)
+		client, err := i_grpc.NewDataNodeClient(addr)
 		if err != nil {
 			logger.Fatal("Failed to create worker client", zap.String("address", addr), zap.Error(err))
 		}
@@ -72,7 +72,7 @@ func main() {
 		defer client.Close()
 	}
 
-	queryHandler := handlers.NewQueryHandler(logger, masterClient, workerClients, queryCounter)
+	queryHandler := handlers.NewQueryHandler(logger, masterClient, queryCounter)
 
 	r := gin.New()
 	r.Use(gin.Recovery())

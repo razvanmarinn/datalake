@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
+
 type Block struct {
 	BlockID  string
 	WorkerID string
@@ -22,10 +23,10 @@ type BlockLocation struct {
 
 type CompactionJob struct {
 	ID             uuid.UUID
-	ProjectID      uuid.UUID 
-	SchemaID       int 
+	ProjectID      uuid.UUID
+	SchemaID       int
 	Status         string
-	TargetBlockIDs []string 
+	TargetBlockIDs []string
 	OutputFilePath string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

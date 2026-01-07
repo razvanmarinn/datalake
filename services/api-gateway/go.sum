@@ -84,6 +84,8 @@ github.com/prometheus/procfs v0.12.0 h1:jluTpSng7V9hY0O2R9DzzJHYb2xULk9VTR1V1R/k
 github.com/prometheus/procfs v0.12.0/go.mod h1:pcuDEFsWDnvcgNzo4EEweacyhjeA9Zk3cnaOZAZEfOo=
 github.com/razvanmarinn/datalake v0.0.0-20260102112249-885aa189dfb4 h1:teAXc1KEZpygA4/tLZm63CvjJpjsljqQTdVfiqyA8Hs=
 github.com/razvanmarinn/datalake v0.0.0-20260102112249-885aa189dfb4/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
+github.com/razvanmarinn/datalake v0.0.0-20260107154359-080f4f15f641 h1:j+BZdf4dY6Oe88/qbtPCQMkt+2YDWQAuznAgbt4io7M=
+github.com/razvanmarinn/datalake v0.0.0-20260107154359-080f4f15f641/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
 github.com/rogpeppe/go-internal v1.13.1 h1:KvO1DLK/DRN07sQ1LQKScxyZJuNnedQ5/wKSR38lUII=
 github.com/rogpeppe/go-internal v1.13.1/go.mod h1:uMEvuHeurkdAXX61udpOXGD/AzZDWNMNyH2VO9fmH0o=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=

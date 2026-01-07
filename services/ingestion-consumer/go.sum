@@ -250,6 +250,8 @@ github.com/r3labs/sse v0.0.0-20210224172625-26fe804710bc h1:zAsgcP8MhzAbhMnB1QQ2
 github.com/r3labs/sse v0.0.0-20210224172625-26fe804710bc/go.mod h1:S8xSOnV3CgpNrWd0GQ/OoQfMtlg2uPRSuTzcSGrzwK8=
 github.com/razvanmarinn/datalake v0.0.0-20260106205032-93fcb695f126 h1:0SH65Iu/IIGTp/ClofWmvla55n5clx4yjPhKUwIsDzg=
 github.com/razvanmarinn/datalake v0.0.0-20260106205032-93fcb695f126/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
+github.com/razvanmarinn/datalake v0.0.0-20260107154359-080f4f15f641 h1:j+BZdf4dY6Oe88/qbtPCQMkt+2YDWQAuznAgbt4io7M=
+github.com/razvanmarinn/datalake v0.0.0-20260107154359-080f4f15f641/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
 github.com/rivo/uniseg v0.2.0 h1:S1pD9weZBuJdFmowNwbpi7BJ8TNftyUImj/0WQi72jY=
 github.com/rivo/uniseg v0.2.0/go.mod h1:J6wj4VEh+S6ZtnVlnTBMWIodfgj8LQOQFoIToxlJtxc=
 github.com/secure-systems-lab/go-securesystemslib v0.4.0 h1:b23VGrQhTA8cN2CbBw7/FulN9fTtqYUdS5+Oxzt+DUE=

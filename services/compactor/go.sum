@@ -462,6 +462,8 @@ github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZN
 github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4/go.mod h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=
 github.com/razvanmarinn/datalake v0.0.0-20260106205032-93fcb695f126 h1:0SH65Iu/IIGTp/ClofWmvla55n5clx4yjPhKUwIsDzg=
 github.com/razvanmarinn/datalake v0.0.0-20260106205032-93fcb695f126/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
+github.com/razvanmarinn/datalake v0.0.0-20260107154359-080f4f15f641 h1:j+BZdf4dY6Oe88/qbtPCQMkt+2YDWQAuznAgbt4io7M=
+github.com/razvanmarinn/datalake v0.0.0-20260107154359-080f4f15f641/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
 github.com/rogpeppe/fastuuid v1.2.0/go.mod h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6LYCDYWNEvQ=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/rs/xid v1.2.1/go.mod h1:+uKXf+4Djp6Md1KODXJxgGQPKngRmWyn10oCKFzNHOQ=

@@ -5,7 +5,8 @@ import (
 
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"github.com/razvanmarinn/datalake/pkg/metrics"
-	pb "github.com/razvanmarinn/datalake/protobuf"
+	identityv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/identity/v1"
+	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
 	"github.com/razvanmarinn/metadata-service/internal/db"
 	"github.com/razvanmarinn/metadata-service/internal/handlers"
 	"github.com/razvanmarinn/metadata-service/internal/kafka"
@@ -36,7 +37,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	idClient := pb.NewIdentityServiceClient(conn)
+	idClient := identityv1.NewIdentityServiceClient(conn)
 
 	r := handlers.SetupRouter(database, logger, provisioner, idClient)
 
@@ -48,7 +49,7 @@ func main() {
 		DB:     database,
 		Logger: logger,
 	}
-	pb.RegisterMetadataServiceServer(grpcServer, metadataGRPCServer)
+	catalogv1.RegisterCatalogServiceServer(grpcServer, metadataGRPCServer)
 
 	grpcPort := ":50051"
 	lis, err := net.Listen("tcp", grpcPort)

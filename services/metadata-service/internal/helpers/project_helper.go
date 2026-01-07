@@ -6,10 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	pb "github.com/razvanmarinn/datalake/protobuf"
-
 	"github.com/gin-gonic/gin"
 	"github.com/razvanmarinn/datalake/pkg/logging"
+	identityv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/identity/v1"
 	"github.com/razvanmarinn/metadata-service/internal/db"
 	"github.com/razvanmarinn/metadata-service/internal/models"
 	"go.uber.org/zap"
@@ -17,7 +16,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func GetProjectsByUser(database *sql.DB, logger *logging.Logger, idClient pb.IdentityServiceClient) gin.HandlerFunc {
+func GetProjectsByUser(database *sql.DB, logger *logging.Logger, idClient identityv1.IdentityServiceClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestedUsername := c.Param("username")
 		authID, _ := c.Get("userID")
@@ -30,7 +29,7 @@ func GetProjectsByUser(database *sql.DB, logger *logging.Logger, idClient pb.Ide
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		userResp, err := idClient.GetUserInfo(ctx, &pb.GetUserInfoRequest{Username: requestedUsername})
+		userResp, err := idClient.GetUserInfo(ctx, &identityv1.GetUserInfoRequest{Username: requestedUsername})
 		if err != nil {
 			if status.Code(err) == codes.NotFound {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
@@ -54,7 +53,7 @@ func GetProjectsByUser(database *sql.DB, logger *logging.Logger, idClient pb.Ide
 	}
 }
 
-func RegisterProject(database *sql.DB, logger *logging.Logger, idClient pb.IdentityServiceClient) gin.HandlerFunc {
+func RegisterProject(database *sql.DB, logger *logging.Logger, idClient identityv1.IdentityServiceClient) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authID, _ := c.Get("userID")
 
@@ -66,7 +65,7 @@ func RegisterProject(database *sql.DB, logger *logging.Logger, idClient pb.Ident
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		userResp, err := idClient.GetUserInfo(ctx, &pb.GetUserInfoRequest{Username: authID.(string)})
+		userResp, err := idClient.GetUserInfo(ctx, &identityv1.GetUserInfoRequest{Username: authID.(string)})
 		if err != nil {
 			if status.Code(err) == codes.NotFound {
 				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})

@@ -7,7 +7,8 @@ import (
 	"time"
 
 	compactormanager "github.com/razvanmarinn/datalake/compactor/internal/compactor-manager"
-	pb "github.com/razvanmarinn/datalake/protobuf"
+	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
+	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -29,35 +30,31 @@ func main() {
 	}
 	defer conn.Close()
 
-	metadataClient := pb.NewMetadataServiceClient(conn)
-
+	metadataClient := catalogv1.NewCatalogServiceClient(conn)
+	masterClient := coordinatorv1.NewCoordinatorServiceClient(conn)
 	compactor := compactormanager.NewCompactor(compactormanager.Config{
-		StorageRoot:    storageRoot,
-		SchemaAPI:      os.Getenv("SCHEMA_API_URL"), // e.g. http://metadata-service:8080
-		MetadataClient: metadataClient,
+		StorageRoot:   storageRoot,
+		SchemaAPI:     os.Getenv("SCHEMA_API_URL"), // e.g. http://metadata-service:8080
+		CatalogClient: metadataClient,
+		MasterClient:  masterClient,
 	})
 
 	log.Println("🔎 Fetching compaction job...")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	resp, err := metadataClient.GetCompactionJob(ctx, &pb.GetCompactionJobRequest{})
+	resp, err := metadataClient.PollCompactionJobs(ctx, &catalogv1.PollCompactionJobsRequest{})
 	if err != nil {
 		log.Fatalf("Failed to get compaction job: %v", err)
 	}
-
-	job := resp.GetJob()
-	if job == nil || job.Id == "" {
-		log.Println("No pending compaction jobs found.")
-		return
-	}
-
-	log.Printf("Starting compaction job for Project: %s, Schema: %s", job.ProjectId, job.SchemaName)
-	err = compactor.Compact(ctx, job)
+	jobId := resp.GetJobId()
+	schemaName := resp.GetSchemaName()
+	projectId := resp.GetProjectId()
+	targetFiles := resp.GetTargetFiles()
+	err = compactor.Compact(ctx, jobId, projectId, schemaName, targetFiles)
 	if err != nil {
-		log.Printf("❌ Failed to compact %s/%s: %v", job.ProjectId, job.SchemaName, err)
+		log.Printf("❌ Failed to compact %s/%s: %v", projectId, schemaName, err)
 	}
 
 	log.Println("✅ Compaction cycle finished.")
 }
-

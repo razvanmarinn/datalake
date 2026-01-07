@@ -10,19 +10,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"github.com/razvanmarinn/datalake/pkg/metrics"
-	pb "github.com/razvanmarinn/datalake/protobuf"
+	indentityv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/identity/v1"
 	"github.com/razvanmarinn/identity-service/internal/db"
 	"github.com/razvanmarinn/identity-service/internal/handlers"
 	"google.golang.org/grpc"
 )
 
 func main() {
-	// Set Gin to release mode and disable default logging FIRST
 	gin.SetMode(gin.ReleaseMode)
 	gin.DefaultWriter = io.Discard
 	gin.DefaultErrorWriter = io.Discard
 
-	// Initialize logger
 	logger := logging.NewDefaultLogger("identity-service")
 	logger.Info("New Logger initialized")
 	defer logger.Sync()
@@ -34,7 +32,7 @@ func main() {
 	defer database.Close()
 
 	s := grpc.NewServer()
-	pb.RegisterIdentityServiceServer(s, &handlers.GRPCServer{
+	indentityv1.RegisterIdentityServiceServer(s, &handlers.GRPCServer{
 		DB:     database,
 		Logger: logger,
 	})

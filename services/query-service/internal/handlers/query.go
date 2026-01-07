@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/linkedin/goavro/v2"
@@ -15,104 +16,132 @@ import (
 
 // QueryHandler is a handler for the query service.
 type QueryHandler struct {
-	logger        *zap.Logger
-	MasterClient  *grpc.MasterClient
-	WorkerClients map[string]*grpc.WorkerClient
-	QueryCounter  metric.Int64Counter
+	logger       *zap.Logger
+	MasterClient *grpc.MasterClient
+
+	// Cache for DataNode clients to avoid re-dialing constantly
+	dataNodeClientsMu sync.Mutex
+	dataNodeClients   map[string]*grpc.DataNodeClient
+
+	QueryCounter metric.Int64Counter
 }
 
 // NewQueryHandler creates a new QueryHandler.
-func NewQueryHandler(logger *zap.Logger, masterClient *grpc.MasterClient, workerClients map[string]*grpc.WorkerClient, queryCounter metric.Int64Counter) *QueryHandler {
+func NewQueryHandler(logger *zap.Logger, masterClient *grpc.MasterClient, queryCounter metric.Int64Counter) *QueryHandler {
 	return &QueryHandler{
-		logger:        logger,
-		MasterClient:  masterClient,
-		WorkerClients: workerClients,
-		QueryCounter:  queryCounter,
+		logger:          logger,
+		MasterClient:    masterClient,
+		dataNodeClients: make(map[string]*grpc.DataNodeClient),
+		QueryCounter:    queryCounter,
 	}
 }
 
-func (h *QueryHandler) GetFileList(c *gin.Context) {
-	ownerIdVal, exists := c.Get("userID")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing owner ID"})
-		return
-	}
-	ownerId := ownerIdVal.(string)
-	h.logger.Info("Owner id", zap.String("ownerId", ownerId))
+// getDataNodeClient returns an existing client or creates a new one for the given address.
+func (h *QueryHandler) getDataNodeClient(address string) (*grpc.DataNodeClient, error) {
+	h.dataNodeClientsMu.Lock()
+	defer h.dataNodeClientsMu.Unlock()
 
+	if client, ok := h.dataNodeClients[address]; ok {
+		return client, nil
+	}
+
+	h.logger.Info("Creating new connection to DataNode", zap.String("address", address))
+	client, err := grpc.NewDataNodeClient(address)
+	if err != nil {
+		return nil, err
+	}
+
+	h.dataNodeClients[address] = client
+	return client, nil
+}
+
+func (h *QueryHandler) GetFileList(c *gin.Context) {
+	// 1. Get Project ID
 	projectID := c.Param("project")
 	if projectID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing project parameter"})
 		return
 	}
 
-	h.logger.Info("Attempting GetFileListForProject RPC",
-		zap.String("OwnerID", ownerId),
-		zap.String("ProjectID", projectID),
-	)
+	// 2. Optional: Directory Prefix
+	prefix := c.Query("prefix")
 
-	resp, err := h.MasterClient.GetFileListForProject(
-		c.Request.Context(),
-		ownerId,
-		projectID,
-	)
+	h.logger.Info("Attempting ListFiles RPC", zap.String("ProjectID", projectID))
 
+	// 3. Call Coordinator
+	resp, err := h.MasterClient.ListFiles(c.Request.Context(), projectID, prefix)
 	if err != nil {
 		h.logger.Error("MasterClient RPC Failed", zap.Error(err))
-
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal master service error: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, resp)
+	c.JSON(http.StatusOK, gin.H{"files": resp.FilePaths})
 }
 
-// GetData retrieves file data from the workers.
+// GetData retrieves file data by fetching blocks from DataNodes.
 func (h *QueryHandler) GetData(c *gin.Context) {
 	h.QueryCounter.Add(c.Request.Context(), 1)
+
+	// 1. Parse Parameters
+	projectID := c.Param("project") // Assuming route is /:project/data
 	fileName := c.Query("file_name")
-	if fileName == "" {
-		h.logger.Error("file_name query parameter is required")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "file_name query parameter is required"})
+
+	if projectID == "" || fileName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "project and file_name are required"})
 		return
 	}
-	h.logger.Info("Received request for file", zap.String("file_name", fileName))
 
-	metadata, err := h.MasterClient.GetMetadata(c.Request.Context(), fileName)
+	h.logger.Info("Received request for file", zap.String("project", projectID), zap.String("file", fileName))
+
+	// 2. Get Metadata from Coordinator
+	metadata, err := h.MasterClient.GetFileMetadata(c.Request.Context(), projectID, fileName)
 	if err != nil {
-		h.logger.Error("Failed to get metadata from master", zap.Error(err))
+		h.logger.Error("Failed to get metadata", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	h.logger.Info("Successfully retrieved metadata", zap.Any("metadata", metadata))
 
-	var data bytes.Buffer
-	for _, batchID := range metadata.BatchIds {
-		location, ok := metadata.BatchLocations[batchID]
-		if !ok || len(location.WorkerIds) == 0 {
-			h.logger.Warn("No location found for batch", zap.String("batch_id", batchID))
-			continue // Or handle error
-		}
-		workerAddr := location.WorkerIds[0] // Simple strategy: use the first worker
-		h.logger.Info("Retrieving batch from worker", zap.String("batch_id", batchID), zap.String("worker_address", workerAddr))
-		workerClient, ok := h.WorkerClients[workerAddr]
+	// 3. Fetch Blocks from DataNodes
+	var fileBuffer bytes.Buffer
+
+	// Iterate over blocks in order
+	for _, blockInfo := range metadata.Blocks {
+		blockID := blockInfo.BlockId
+
+		// Find location for this block
+		location, ok := metadata.Locations[blockID]
 		if !ok {
-			h.logger.Error("Unknown worker address", zap.String("worker_address", workerAddr))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "unknown worker address: " + workerAddr})
+			h.logger.Error("No location found for block", zap.String("block_id", blockID))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Incomplete file metadata"})
 			return
 		}
 
-		batch, err := workerClient.RetrieveBatch(c.Request.Context(), batchID)
+		// Construct Worker Address
+		workerAddr := location.Address
+
+		// Get Client
+		client, err := h.getDataNodeClient(workerAddr)
 		if err != nil {
-			h.logger.Error("Failed to retrieve batch from worker", zap.Error(err))
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			h.logger.Error("Failed to connect to datanode", zap.String("addr", workerAddr), zap.Error(err))
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to storage node"})
 			return
 		}
-		data.Write(batch.BatchData)
+
+		// Fetch Data
+		h.logger.Debug("Fetching block", zap.String("block_id", blockID), zap.String("worker", workerAddr))
+		blockData, err := client.FetchBlock(c.Request.Context(), blockID)
+		if err != nil {
+			h.logger.Error("Failed to fetch block", zap.String("block_id", blockID), zap.Error(err))
+			c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to retrieve data block"})
+			return
+		}
+
+		fileBuffer.Write(blockData)
 	}
 
-	h.logger.Info("Successfully retrieved all batches for file", zap.String("file_name", fileName))
-	c.Data(http.StatusOK, "application/octet-stream", data.Bytes())
+	h.logger.Info("Successfully retrieved file", zap.String("file", fileName), zap.Int("size", fileBuffer.Len()))
+	c.Data(http.StatusOK, "application/octet-stream", fileBuffer.Bytes())
 }
 
 func (h *QueryHandler) GetSchemaData(c *gin.Context) {
@@ -132,57 +161,63 @@ func (h *QueryHandler) GetSchemaData(c *gin.Context) {
 		zap.String("owner", ownerId),
 	)
 
-	fileListResp, err := h.MasterClient.GetFileListForProject(c.Request.Context(), ownerId, projectID)
+	// 1. List Files
+	// Optimization: Pass schema name as prefix if your naming convention supports it (e.g. "project_schema_")
+	prefix := fmt.Sprintf("%s_%s", projectID, schemaName)
+	fileListResp, err := h.MasterClient.ListFiles(c.Request.Context(), projectID, prefix)
 	if err != nil {
 		h.logger.Error("Failed to fetch file list", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch file list"})
 		return
 	}
 
-	var tableData []interface{} 
+	var tableData []interface{}
 
-	for _, fileName := range fileListResp.FileListNames {
-		// Filter: Check if file belongs to the requested schema
+	for _, fileName := range fileListResp.FilePaths {
+		// Double check schema match (in case prefix match was partial)
 		if !isStackPartOfSchema(fileName, projectID, schemaName) {
 			continue
 		}
 
-		// A. Get Metadata
-		metadata, err := h.MasterClient.GetMetadata(c.Request.Context(), fileName)
+		// 2. Get Metadata
+		metadata, err := h.MasterClient.GetFileMetadata(c.Request.Context(), projectID, fileName)
 		if err != nil {
 			h.logger.Warn("Skipping file due to metadata error", zap.String("file", fileName), zap.Error(err))
 			continue
 		}
 
-		// B. Retrieve and Assemble File Bytes
+		// 3. Assemble File
 		var fileBuffer bytes.Buffer
-		for _, batchID := range metadata.BatchIds {
-			location, ok := metadata.BatchLocations[batchID]
-			if !ok || len(location.WorkerIds) == 0 {
-				continue
-			}
-
-			workerAddr := location.WorkerIds[0]
-			workerClient, ok := h.WorkerClients[workerAddr]
+		for _, blockInfo := range metadata.Blocks {
+			location, ok := metadata.Locations[blockInfo.BlockId]
 			if !ok {
 				continue
 			}
 
-			batch, err := workerClient.RetrieveBatch(c.Request.Context(), batchID)
+			workerAddr := location.Address
+			client, err := h.getDataNodeClient(workerAddr)
 			if err != nil {
-				h.logger.Error("Failed to retrieve batch", zap.String("batch", batchID), zap.Error(err))
+				h.logger.Warn("Skipping block due to connection error", zap.String("worker", workerAddr))
 				continue
 			}
-			fileBuffer.Write(batch.BatchData)
+
+			data, err := client.FetchBlock(c.Request.Context(), blockInfo.BlockId)
+			if err != nil {
+				h.logger.Error("Failed to retrieve block", zap.String("block", blockInfo.BlockId), zap.Error(err))
+				continue
+			}
+			fileBuffer.Write(data)
 		}
 
-		records, err := parseAvroOCF(fileBuffer.Bytes())
-		if err != nil {
-			h.logger.Warn("Failed to parse Avro file", zap.String("file", fileName), zap.Error(err))
-			continue
+		// 4. Parse Avro
+		if fileBuffer.Len() > 0 {
+			records, err := parseAvroOCF(fileBuffer.Bytes())
+			if err != nil {
+				h.logger.Warn("Failed to parse Avro file", zap.String("file", fileName), zap.Error(err))
+				continue
+			}
+			tableData = append(tableData, records...)
 		}
-
-		tableData = append(tableData, records...)
 	}
 
 	h.logger.Info("Successfully aggregated schema data",
@@ -193,8 +228,8 @@ func (h *QueryHandler) GetSchemaData(c *gin.Context) {
 }
 
 func isStackPartOfSchema(filename, projectID string, schema string) bool {
-	expectedPrefix := fmt.Sprintf("%s_%s_", projectID, schema)
-    return strings.HasPrefix(filename, expectedPrefix)
+	expectedPrefix := fmt.Sprintf("%s_%s", projectID, schema)
+	return strings.Contains(filename, expectedPrefix)
 }
 
 func parseAvroOCF(data []byte) ([]interface{}, error) {

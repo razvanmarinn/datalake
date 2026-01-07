@@ -39,7 +39,6 @@ func (s *server) AllocateBlock(ctx context.Context, req *coordinatorv1.AllocateB
 	return resp, nil
 }
 
-// 2. CommitFile
 func (s *server) CommitFile(ctx context.Context, req *coordinatorv1.CommitFileRequest) (*coordinatorv1.CommitFileResponse, error) {
 	s.logger.Info("Received CommitFile request", zap.String("file_path", req.FilePath))
 

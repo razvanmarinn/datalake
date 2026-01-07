@@ -9,12 +9,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/razvanmarinn/datalake/pkg/jwt/middleware"
 	"github.com/razvanmarinn/datalake/pkg/logging"
-	pb "github.com/razvanmarinn/datalake/protobuf"
 	"github.com/razvanmarinn/metadata-service/internal/helpers"
 	"github.com/razvanmarinn/metadata-service/internal/kafka"
+	identityv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/identity/v1"
 )
 
-func SetupRouter(database *sql.DB, logger *logging.Logger, prov *kafka.Provisioner, idClient pb.IdentityServiceClient) *gin.Engine {
+func SetupRouter(database *sql.DB, logger *logging.Logger, prov *kafka.Provisioner, idClient identityv1.IdentityServiceClient) *gin.Engine {
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{

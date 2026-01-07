@@ -6,46 +6,42 @@ import (
 	"log"
 	"time"
 
-	"github.com/razvanmarinn/datalake/protobuf"
+	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
-// MasterClient is a client for the MasterService.
+// MasterClient is a client for the CoordinatorService.
 type MasterClient struct {
 	conn    *grpc.ClientConn
-	service protobuf.MasterServiceClient
+	service coordinatorv1.CoordinatorServiceClient
 }
 
 // NewMasterClient creates a new MasterClient.
 func NewMasterClient(address string) (*MasterClient, error) {
-	// 1. LOG THE INPUT ADDRESS
-	log.Printf("Attempting to dial Master Node at address: %s", address)
+	log.Printf("Attempting to dial Coordinator at address: %s", address)
 
-	// Using grpc.WithBlock() ensures the client waits for the connection
-	// to establish and returns an error if it cannot connect within the timeout.
-	// We add a 5-second timeout context for robust connection attempts.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// Updated to use google.golang.org/grpc/credentials/insecure
 	conn, err := grpc.DialContext(
 		ctx,
 		address,
-		grpc.WithInsecure(),
-		grpc.WithBlock(), // Wait until the connection is established or fails
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
 	)
 
 	if err != nil {
-		// 2. LOG THE CONNECTION ERROR
-		log.Printf("FATAL ERROR: Failed to connect to Master Node at %s: %v", address, err)
-		return nil, fmt.Errorf("could not connect to master node at %s: %w", address, err)
+		log.Printf("FATAL ERROR: Failed to connect to Coordinator at %s: %v", address, err)
+		return nil, fmt.Errorf("could not connect to coordinator at %s: %w", address, err)
 	}
 
-	// 3. LOG SUCCESS
-	log.Printf("Successfully connected to Master Node at: %s", address)
+	log.Printf("Successfully connected to Coordinator at: %s", address)
 
 	return &MasterClient{
 		conn:    conn,
-		service: protobuf.NewMasterServiceClient(conn),
+		service: coordinatorv1.NewCoordinatorServiceClient(conn),
 	}, nil
 }
 
@@ -54,21 +50,24 @@ func (c *MasterClient) Close() {
 	c.conn.Close()
 }
 
-// GetMetadata calls the GetMetadata RPC on the MasterService.
-func (c *MasterClient) GetMetadata(ctx context.Context, fileName string) (*protobuf.MasterMetadataResponse, error) {
-	log.Printf("Querying master for metadata for file: %s", fileName)
-	req := &protobuf.Location{
-		FileName: fileName,
+// GetFileMetadata calls the GetFileMetadata RPC.
+func (c *MasterClient) GetFileMetadata(ctx context.Context, projectID, filePath string) (*coordinatorv1.GetFileMetadataResponse, error) {
+	log.Printf("Querying coordinator for metadata: project=%s file=%s", projectID, filePath)
+	
+	req := &coordinatorv1.GetFileMetadataRequest{
+		ProjectId: projectID,
+		FilePath:  filePath,
 	}
-	return c.service.GetMetadata(ctx, req)
+	return c.service.GetFileMetadata(ctx, req)
 }
 
-// rpc GetFileListForProject(common.ApiRequestForFileList) returns (common.FileListResponse) {}
-func (c *MasterClient) GetFileListForProject(ctx context.Context, owner_id string, project_id string) (*protobuf.FileListResponse, error) {
-	req := &protobuf.ApiRequestForFileList{
-		OwnerId:   owner_id,
-		ProjectId: project_id,
-	}
-	return c.service.GetFileListForProject(ctx, req)
+// ListFiles calls the ListFiles RPC.
+func (c *MasterClient) ListFiles(ctx context.Context, projectID, directoryPrefix string) (*coordinatorv1.ListFilesResponse, error) {
+	log.Printf("Listing files: project=%s prefix=%s", projectID, directoryPrefix)
 
+	req := &coordinatorv1.ListFilesRequest{
+		ProjectId:       projectID,
+		DirectoryPrefix: directoryPrefix,
+	}
+	return c.service.ListFiles(ctx, req)
 }

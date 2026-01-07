@@ -25,13 +25,13 @@ message GetProjectResponse {
 }
 
 message PollCompactionJobsRequest {
-    string worker_id = 1;
 }
 
 message PollCompactionJobsResponse {
     string job_id = 1;
     string project_id = 2;
-    repeated string target_files = 3;
+    string schema_name = 3;
+    repeated string target_files = 4;
 }
 
 message UpdateJobStatusRequest {
