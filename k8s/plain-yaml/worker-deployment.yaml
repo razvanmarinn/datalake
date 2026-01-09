@@ -70,7 +70,7 @@ spec:
         env:
         - name: GRPC_PORT
           value: ":50051"
-        - name: POD_NAME
+        - name: HOSTNAME
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
