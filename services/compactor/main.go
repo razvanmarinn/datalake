@@ -50,8 +50,9 @@ func main() {
 	jobId := resp.GetJobId()
 	schemaName := resp.GetSchemaName()
 	projectId := resp.GetProjectId()
+	projectName := resp.GetProjectName()
 	targetFiles := resp.GetTargetFiles()
-	err = compactor.Compact(ctx, jobId, projectId, schemaName, targetFiles)
+	err = compactor.Compact(ctx, jobId, projectId, projectName, schemaName, targetFiles)
 	if err != nil {
 		log.Printf("❌ Failed to compact %s/%s: %v", projectId, schemaName, err)
 	}

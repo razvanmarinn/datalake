@@ -6,7 +6,7 @@ require (
 	github.com/confluentinc/confluent-kafka-go/v2 v2.12.0
 	github.com/google/uuid v1.6.0
 	github.com/linkedin/goavro/v2 v2.13.1
-	github.com/razvanmarinn/datalake v0.0.0-20260107173813-fb521a7382d6
+	github.com/razvanmarinn/datalake v0.0.0-20260109114312-42c57cb6e776
 	go.opentelemetry.io/otel v1.37.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.37.0
 	go.opentelemetry.io/otel/sdk v1.37.0

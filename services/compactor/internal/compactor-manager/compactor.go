@@ -93,7 +93,7 @@ func (c *Compactor) FetchSchema(project, schemaName string) (*FetchSchemaRespons
 }
 
 // Compact runs the full cycle: Fetch Job -> Read Blocks (Stream) -> Write Parquet -> Commit
-func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string, schemaName string, targetFiles []string) error {
+func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string, projectName string, schemaName string, targetFiles []string) error {
 	// 1. Update job status to 'RUNNING'
 	// Note: We use the Catalog for job tracking
 	fmt.Println("🚀 Starting compaction job:", jobID)
@@ -126,7 +126,7 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 	localOutPath := filepath.Join(compactedFolder, compactedFileName)
 
 	// 3. Fetch Schemas
-	schemas, err := c.FetchSchema(projectID, schemaName)
+	schemas, err := c.FetchSchema(projectName, schemaName)
 	if err != nil {
 		finalErr = err
 		return err

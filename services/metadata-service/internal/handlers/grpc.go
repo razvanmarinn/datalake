@@ -63,6 +63,7 @@ func (s *GRPCServer) PollCompactionJobs(ctx context.Context, req *catalogv1.Poll
 	return &catalogv1.PollCompactionJobsResponse{
 		JobId:       job.ID.String(),
 		ProjectId:   job.ProjectID.String(),
+		ProjectName: job.ProjectName,
 		SchemaName:  schema.Name,
 		TargetFiles: job.TargetBlockIDs,
 	}, nil
@@ -90,6 +91,30 @@ func (s *GRPCServer) UpdateJobStatus(ctx context.Context, req *catalogv1.UpdateJ
 	}
 
 	return &catalogv1.UpdateJobStatusResponse{
+		Success: true,
+	}, nil
+}
+
+
+func (s *GRPCServer) RegisterDataFile(ctx context.Context, req *catalogv1.RegisterDataFileRequest) (*catalogv1.RegisterDataFileResponse, error) {
+	s.Logger.Info("Received RegisterDataFile request",
+		zap.String("project_id", req.GetProjectId()),
+		zap.String("schema_name", req.GetSchemaName()),
+		zap.String("block_id", req.GetBlockId()),
+	)
+
+	projectID, err := uuid.Parse(req.GetProjectId())
+	if err != nil {
+		return &catalogv1.RegisterDataFileResponse{Success: false}, fmt.Errorf("invalid project ID: %w", err)
+	}
+
+	err = db.RegisterDataFile(s.DB, projectID.String(), req.GetSchemaName(), req.GetBlockId(), req.GetWorkerId(), req.GetFilePath(), req.GetFileSize(), req.GetFileFormat())
+	if err != nil {
+		s.Logger.Error("Failed to register data file", zap.Error(err))
+		return &catalogv1.RegisterDataFileResponse{Success: false}, err
+	}
+
+	return &catalogv1.RegisterDataFileResponse{
 		Success: true,
 	}, nil
 }

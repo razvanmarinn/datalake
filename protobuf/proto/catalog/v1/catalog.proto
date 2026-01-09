@@ -33,6 +33,7 @@ message PollCompactionJobsResponse {
     string project_id = 2;
     string schema_name = 3;
     repeated string target_files = 4;
+    string project_name = 5;
 }
 
 message UpdateJobStatusRequest {

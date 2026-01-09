@@ -112,6 +112,8 @@ github.com/razvanmarinn/datalake v0.0.0-20260107173712-cd659897ff33 h1:9yqD4qfzF
 github.com/razvanmarinn/datalake v0.0.0-20260107173712-cd659897ff33/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
 github.com/razvanmarinn/datalake v0.0.0-20260107173813-fb521a7382d6 h1:sGMo4yoJnpdfLjQ7iJir5hdqSussPqGB5OwJyc/ZYaM=
 github.com/razvanmarinn/datalake v0.0.0-20260107173813-fb521a7382d6/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
+github.com/razvanmarinn/datalake v0.0.0-20260109114312-42c57cb6e776 h1:HL/5/zgsUje0Zw/bcZlS2mC07/OAWyUvye+Y0l3iJs0=
+github.com/razvanmarinn/datalake v0.0.0-20260109114312-42c57cb6e776/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/segmentio/kafka-go v0.4.49 h1:GJiNX1d/g+kG6ljyJEoi9++PUMdXGAxb7JGPiDCuNmk=

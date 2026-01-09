@@ -376,6 +376,37 @@ func GetSchemaID(db *sql.DB, projectName, schemaName string) (int, error) {
 }
 
 // --- Data & Job Management ---
+func RegisterDataFile(db *sql.DB, projectIDStr, schemaName, blockID, workerID, filePath string, fileSize int64, fileFormat string) error {
+	projectUUID, err := uuid.Parse(projectIDStr)
+	if err != nil {
+		return fmt.Errorf("invalid project uuid '%s': %v", projectIDStr, err)
+	}
+
+	projectName, err := GetProjectNameByID(db, projectUUID)
+	if err != nil {
+		return fmt.Errorf("failed to resolve project name for id %s: %v", projectIDStr, err)
+	}
+
+	schemaID, err := GetSchemaID(db, projectName, schemaName)
+	if err != nil {
+		return fmt.Errorf("failed to resolve schema id for '%s' in project '%s': %v", schemaName, projectName, err)
+	}
+
+	// 3. Call the existing low-level RegisterBlock
+	block := models.Block{
+		BlockID:  blockID,
+		WorkerID: workerID,
+		Path:     filePath,
+		Size:     fileSize,
+		Format:   fileFormat,
+	}
+
+	if err := RegisterBlock(db, projectUUID, schemaID, block); err != nil {
+		return fmt.Errorf("failed to register block in db: %v", err)
+	}
+
+	return nil
+}
 
 // RegisterBlock inserts a new data file record
 func RegisterBlock(db *sql.DB, projectID uuid.UUID, schemaID int, block models.Block) error {
@@ -426,48 +457,53 @@ func CreateCompactionJob(db *sql.DB, projectID uuid.UUID, schemaID int, targetBl
 	return job, nil
 }
 
-// PollPendingCompactionJob fetches the oldest pending job and locks it using SKIP LOCKED.
-// It joins with schemas to retrieve the schema name.
 func PollPendingCompactionJob(db *sql.DB) (*models.CompactionJob, error) {
-	// This query finds the oldest pending job, locks it, and returns the details
-	query := `
+    query := `
         SELECT 
-            j.id, j.project_id, j.schema_id, s.name, j.status, j.target_block_ids, j.created_at, j.updated_at
+            j.id, 
+            j.project_id, 
+            p.name,          -- <--- 1. Select Project Name
+            j.schema_id, 
+            s.name, 
+            j.status, 
+            j.target_block_ids, 
+            j.created_at, 
+            j.updated_at
         FROM compaction_jobs j
         JOIN schemas s ON j.schema_id = s.id
+        JOIN projects p ON j.project_id = p.id  -- <--- 2. Join Projects Table
         WHERE j.status = 'PENDING'
         ORDER BY j.created_at ASC
         LIMIT 1
         FOR UPDATE SKIP LOCKED
     `
-	row := db.QueryRow(query)
+    row := db.QueryRow(query)
 
-	job := &models.CompactionJob{}
-	var targetBlockIDs []sql.NullString
+    job := &models.CompactionJob{}
+    var targetBlockIDs []sql.NullString
 
-	// Ensure your models.CompactionJob has a SchemaName string field
-	err := row.Scan(
-		&job.ID,
-		&job.ProjectID,
-		&job.SchemaID,
-		&job.Status,
-		pq.Array(&targetBlockIDs),
-		&job.CreatedAt,
-		&job.UpdatedAt,
-	)
+    err := row.Scan(
+        &job.ID,
+        &job.ProjectID,
+        &job.ProjectName, // <--- 3. Scan Project Name (Ensure this field exists in your struct)
+        &job.SchemaID,
+        &job.SchemaName,
+        &job.Status,
+        pq.Array(&targetBlockIDs),
+        &job.CreatedAt,
+        &job.UpdatedAt,
+    )
 
-	if err != nil {
-		return nil, err // Returns sql.ErrNoRows if empty
-	}
+    if err != nil {
+        return nil, err 
+    }
 
-	job.TargetBlockIDs = make([]string, len(targetBlockIDs))
-	// We map this to TargetFiles in the model/handler usually
+    job.TargetBlockIDs = make([]string, len(targetBlockIDs))
+    for i, s := range targetBlockIDs {
+        job.TargetBlockIDs[i] = s.String
+    }
 
-	for i, s := range targetBlockIDs {
-		job.TargetBlockIDs[i] = s.String
-	}
-
-	return job, nil
+    return job, nil
 }
 
 // UpdateCompactionJobStatus updates status, output file, and if completed, marks source files as compacted.
