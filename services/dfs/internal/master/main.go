@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -114,7 +115,6 @@ func (s *replicationServer) ReplicateLog(ctx context.Context, req *replicationv1
 	return &replicationv1.ReplicateLogResponse{Success: err == nil}, err
 }
 
-
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger := logging.NewDefaultLogger("master_node")
@@ -129,7 +129,7 @@ func main() {
 	state := nodes.NewMasterNodeState()
 	_ = state.LoadStateFromFile()
 	masterNode := nodes.GetMasterNodeInstance()
-	masterNode.IsActive = false 
+	masterNode.IsActive = false
 
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
@@ -154,16 +154,16 @@ func main() {
 			logger.Fatal("Server failed", zap.Error(err))
 		}
 	}()
-
-	id := os.Getenv("HOSTNAME") 
-	if id == "" {
-		id = "unknown-node"
+	hostname := os.Getenv("HOSTNAME")
+	if hostname == "" {
+		hostname = "unknown-node"
 	}
+	id := fmt.Sprintf("%s-%s", hostname, uuid.New().String())
 
 	lock := &resourcelock.LeaseLock{
 		LeaseMeta: metav1.ObjectMeta{
 			Name:      "dfs-master-lock",
-			Namespace: "datalake", 
+			Namespace: "datalake",
 		},
 		Client: k8sClient.CoordinationV1(),
 		LockConfig: resourcelock.ResourceLockConfig{
@@ -191,7 +191,7 @@ func main() {
 					logger.Error("Failed to init load balancer", zap.Error(err))
 				}
 
-				if err := promoteSelf(k8sClient, id, "datalake"); err != nil {
+				if err := promoteSelf(k8sClient, hostname, "datalake"); err != nil {
 					logger.Error("Failed to patch pod label", zap.Error(err))
 				}
 			},
@@ -200,7 +200,7 @@ func main() {
 				os.Exit(1)
 			},
 			OnNewLeader: func(identity string) {
-				if identity == id {
+				if identity == hostname {
 					return
 				}
 				logger.Info("New leader elected", zap.String("leader", identity))

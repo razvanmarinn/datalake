@@ -1,5 +1,5 @@
 /k8s/kafka/data/
-/data/
+/datalake_data/
 *.json
 .DS_Store
 status.txt

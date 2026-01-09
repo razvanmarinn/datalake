@@ -4,7 +4,7 @@ go 1.23.4
 
 require (
 	github.com/linkedin/goavro/v2 v2.14.1
-	github.com/razvanmarinn/datalake v0.0.0-20260107154359-080f4f15f641
+	github.com/razvanmarinn/datalake v0.0.0-20260109095626-6888cdf48716
 	github.com/xitongsys/parquet-go v1.6.2
 	github.com/xitongsys/parquet-go-source v0.0.0-20241021075129-b732d2ac9c9b
 	google.golang.org/grpc v1.72.2

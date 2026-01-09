@@ -9,7 +9,7 @@ import (
 	"sort"
 	"sync"
 	"time"
-
+	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
 	commonv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/common/v1"
 	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
 	datanodev1 "github.com/razvanmarinn/datalake/protobuf/gen/go/datanode/v1"
@@ -27,150 +27,172 @@ const (
 var consumerMu sync.Mutex
 
 func (app *App) FlushBatch(parentCtx context.Context, trigger string) {
-	app.BatcherLock.Lock()
-	if len(app.Batcher.Current.Messages) == 0 {
-		app.BatcherLock.Unlock()
-		return
-	}
-	batch := app.Batcher.Flush()
-	app.BatcherLock.Unlock()
+    app.BatcherLock.Lock()
+    if len(app.Batcher.Current.Messages) == 0 {
+        app.BatcherLock.Unlock()
+        return
+    }
+    batch := app.Batcher.Flush()
+    app.BatcherLock.Unlock()
 
-	if batch == nil {
-		return
-	}
+    if batch == nil {
+        return
+    }
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+    ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+    defer cancel()
 
-	ctx, span := app.Tracer.Start(
-		ctx,
-		"ProcessBatch",
-		trace.WithLinks(trace.LinkFromContext(parentCtx)),
-	)
-	defer span.End()
+    ctx, span := app.Tracer.Start(
+        ctx,
+        "ProcessBatch",
+        trace.WithLinks(trace.LinkFromContext(parentCtx)),
+    )
+    defer span.End()
 
-	app.Logger.Info("flushing batch", "trigger", trigger, "size", len(batch.Messages))
+    app.Logger.Info("flushing batch", "trigger", trigger, "size", len(batch.Messages))
 
-	if err := app.dispatchBatch(ctx, batch); err != nil {
-		app.Logger.Error("failed to dispatch batch", "error", err)
-	}
+    if err := app.dispatchBatch(ctx, batch); err != nil {
+        app.Logger.Error("failed to dispatch batch", "error", err)
+    }
 }
 
 func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) error {
-	if len(batch.Messages) == 0 {
-		return nil
-	}
+    if len(batch.Messages) == 0 {
+        return nil
+    }
 
-	projectName := batch.Messages[0].ProjectName
-	projectId, err := app.fetchProjectId(ctx, projectName)
-	if err != nil {
-		return err
-	}
-	key := string(batch.Messages[0].Key) // schema name
+    projectName := batch.Messages[0].ProjectName
+    projectId, err := app.fetchProjectId(ctx, projectName)
+    if err != nil {
+        return err
+    }
+    key := string(batch.Messages[0].Key) // schema name
 
-	schema, err := app.fetchSchema(ctx, projectName, key)
-	if err != nil {
-		return err
-	}
+    schema, err := app.fetchSchema(ctx, projectName, key)
+    if err != nil {
+        return err
+    }
 
-	avroBytes, err := batch.GetMessagesAsAvroBytes(schema)
-	if err != nil {
-		return err
-	}
-	dataSize := int64(len(avroBytes))
+    avroBytes, err := batch.GetMessagesAsAvroBytes(schema)
+    if err != nil {
+        return err
+    }
+    dataSize := int64(len(avroBytes))
 
-	masterConn, err := app.GrpcConnCache.Get(app.Config.MasterAddress)
-	if err != nil {
-		return err
-	}
-	masterClient := coordinatorv1.NewCoordinatorServiceClient(masterConn)
+    // 1. Allocate Block (DFS Master)
+    masterConn, err := app.GrpcConnCache.Get(app.Config.MasterAddress)
+    if err != nil {
+        return err
+    }
+    masterClient := coordinatorv1.NewCoordinatorServiceClient(masterConn)
 
-	allocResp, err := masterClient.AllocateBlock(ctx, &coordinatorv1.AllocateBlockRequest{
-		ProjectId: projectId,
-		SizeBytes: dataSize,
-	})
-	if err != nil {
-		return fmt.Errorf("allocate block failed: %w", err)
-	}
+    allocResp, err := masterClient.AllocateBlock(ctx, &coordinatorv1.AllocateBlockRequest{
+        ProjectId: projectId,
+        SizeBytes: dataSize,
+    })
+    if err != nil {
+        return fmt.Errorf("allocate block failed: %w", err)
+    }
 
-	blockId := allocResp.BlockId
-	targets := allocResp.TargetDatanodes
+    blockId := allocResp.BlockId
+    targets := allocResp.TargetDatanodes
 
-	if len(targets) == 0 {
-		return fmt.Errorf("no target datanodes allocated for block %s", blockId)
-	}
+    if len(targets) == 0 {
+        return fmt.Errorf("no target datanodes allocated for block %s", blockId)
+    }
 
-	target := targets[0]
-	workerConn, err := app.GrpcConnCache.Get(target.Address)
-	if err != nil {
-		return fmt.Errorf("failed to connect to datanode %s: %w", target.Address, err)
-	}
+    target := targets[0]
 
-	workerClient := datanodev1.NewDataNodeServiceClient(workerConn)
-	stream, err := workerClient.PushBlock(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to open stream to datanode: %w", err)
-	}
+    workerConn, err := app.GrpcConnCache.Get(target.Address)
+    if err != nil {
+        return fmt.Errorf("failed to connect to datanode %s: %w", target.Address, err)
+    }
 
-	err = stream.Send(&datanodev1.PushBlockRequest{
-		Data: &datanodev1.PushBlockRequest_Metadata{
-			Metadata: &datanodev1.BlockMetadata{
-				BlockId:   blockId,
-				TotalSize: dataSize,
-			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to send block metadata: %w", err)
-	}
+    workerClient := datanodev1.NewDataNodeServiceClient(workerConn)
+    stream, err := workerClient.PushBlock(ctx)
+    if err != nil {
+        return fmt.Errorf("failed to open stream to datanode: %w", err)
+    }
 
-	for i := 0; i < len(avroBytes); i += ChunkSize {
-		end := i + ChunkSize
-		if end > len(avroBytes) {
-			end = len(avroBytes)
-		}
+    err = stream.Send(&datanodev1.PushBlockRequest{
+        Data: &datanodev1.PushBlockRequest_Metadata{
+            Metadata: &datanodev1.BlockMetadata{
+                BlockId:   blockId,
+                TotalSize: dataSize,
+            },
+        },
+    })
+    if err != nil {
+        return fmt.Errorf("failed to send block metadata: %w", err)
+    }
 
-		err = stream.Send(&datanodev1.PushBlockRequest{
-			Data: &datanodev1.PushBlockRequest_Chunk{
-				Chunk: avroBytes[i:end],
-			},
-		})
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("failed to send chunk: %w", err)
-		}
-	}
+    for i := 0; i < len(avroBytes); i += ChunkSize {
+        end := i + ChunkSize
+        if end > len(avroBytes) {
+            end = len(avroBytes)
+        }
 
-	pushResp, err := stream.CloseAndRecv()
-	if err != nil {
-		return fmt.Errorf("failed to close stream/recv response: %w", err)
-	}
-	if !pushResp.Success {
-		return fmt.Errorf("datanode reported failure: %s", pushResp.Message)
-	}
+        err = stream.Send(&datanodev1.PushBlockRequest{
+            Data: &datanodev1.PushBlockRequest_Chunk{
+                Chunk: avroBytes[i:end],
+            },
+        })
+        if err == io.EOF {
+            break
+        }
+        if err != nil {
+            return fmt.Errorf("failed to send chunk: %w", err)
+        }
+    }
 
-	fileName := fmt.Sprintf("%s/%s/%s_%s.avro", projectName, key, key, time.Now().Format("20060102150405"))
-	app.Logger.Info("committing file", "file", fileName, "block_id", blockId)
+    pushResp, err := stream.CloseAndRecv()
+    if err != nil {
+        return fmt.Errorf("failed to close stream/recv response: %w", err)
+    }
+    if !pushResp.Success {
+        return fmt.Errorf("datanode reported failure: %s", pushResp.Message)
+    }
 
-	_, err = masterClient.CommitFile(ctx, &coordinatorv1.CommitFileRequest{
-		ProjectId:  projectId,
-		OwnerId:    batch.Messages[0].OwnerId,
-		FilePath:   fileName,
-		FileFormat: "avro",
-		Blocks: []*commonv1.BlockInfo{
-			{
-				BlockId: blockId,
-				Size:    dataSize,
-			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("commit file failed: %w", err)
-	}
+    fileName := fmt.Sprintf("%s/%s/%s_%s.avro", projectName, key, key, time.Now().Format("20060102150405"))
+    app.Logger.Info("committing file", "file", fileName, "block_id", blockId)
 
-	return nil
+    _, err = masterClient.CommitFile(ctx, &coordinatorv1.CommitFileRequest{
+        ProjectId:  projectId,
+        OwnerId:    batch.Messages[0].OwnerId,
+        FilePath:   fileName,
+        FileFormat: "avro",
+        Blocks: []*commonv1.BlockInfo{
+            {
+                BlockId: blockId,
+                Size:    dataSize,
+            },
+        },
+    })
+    if err != nil {
+        return fmt.Errorf("commit file failed: %w", err)
+    }
+
+    catalogConn, err := app.GrpcConnCache.Get(app.Config.CatalogServiceAddress)
+    if err != nil {
+        return fmt.Errorf("failed to get catalog connection: %w", err)
+    }
+    catalogClient := catalogv1.NewCatalogServiceClient(catalogConn)
+
+    _, err = catalogClient.RegisterDataFile(ctx, &catalogv1.RegisterDataFileRequest{
+        ProjectId:   projectId,
+        SchemaName:  key,
+        BlockId:     blockId,
+        WorkerId:    target.WorkerId, 
+        FilePath:    fileName,
+        FileSize:    dataSize,
+        FileFormat:  "avro",
+    })
+    if err != nil {
+        return fmt.Errorf("catalog registration failed: %w", err)
+    }
+
+    app.Logger.Info("file registered in catalog", "file", fileName)
+    return nil
 }
 
 func (app *App) consumeUntilChange(ctx context.Context, currentTopics []string) {

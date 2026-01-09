@@ -96,6 +96,7 @@ func (c *Compactor) FetchSchema(project, schemaName string) (*FetchSchemaRespons
 func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string, schemaName string, targetFiles []string) error {
 	// 1. Update job status to 'RUNNING'
 	// Note: We use the Catalog for job tracking
+	fmt.Println("🚀 Starting compaction job:", jobID)
 	_, err := c.config.CatalogClient.UpdateJobStatus(ctx, &catalogv1.UpdateJobStatusRequest{
 		JobId:  jobID,
 		Status: "RUNNING",

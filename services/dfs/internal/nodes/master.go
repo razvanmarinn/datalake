@@ -19,7 +19,7 @@ import (
 )
 
 var singleInstance *MasterNode
-
+const storageDir = "/data"
 type OpType int
 
 const (
@@ -69,17 +69,23 @@ func (mn *MasterNode) appendToLog(op OperationLogEntry) error {
 }
 
 func NewMasterNode() *MasterNode {
-	f, err := os.OpenFile("master_op.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatalf("Failed to open operation log: %v", err)
-	}
+    logPath := filepath.Join(storageDir, "master_op.log")
 
-	return &MasterNode{
-		ID:        uuid.New().String(),
-		Namespace: make(map[string]*Inode),
-		BlockMap:  make(map[uuid.UUID]*BlockMetadata),
-		opLogFile: f,
-	}
+    if err := os.MkdirAll(storageDir, 0755); err != nil {
+        log.Printf("Warning: could not create storage dir: %v", err)
+    }
+
+    f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        log.Fatalf("Failed to open operation log at %s: %v", logPath, err)
+    }
+
+    return &MasterNode{
+        ID:        uuid.New().String(),
+        Namespace: make(map[string]*Inode),
+        BlockMap:  make(map[uuid.UUID]*BlockMetadata),
+        opLogFile: f,
+    }
 }
 
 func (mn *MasterNode) ApplyReplicatedLog(opType OpType, payload []byte) error {
@@ -99,21 +105,23 @@ func (mn *MasterNode) ApplyReplicatedLog(opType OpType, payload []byte) error {
 }
 
 func NewMasterNodeWithState(state *MasterNodeState) *MasterNode {
-	if state.ID == "" {
-		return NewMasterNode()
-	}
+    if state.ID == "" {
+        return NewMasterNode()
+    }
 
-	f, err := os.OpenFile("master_op.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		log.Fatalf("Failed to open operation log: %v", err)
-	}
+    logPath := filepath.Join(storageDir, "master_op.log")
+    
+    f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        log.Fatalf("Failed to open operation log at %s: %v", logPath, err)
+    }
 
-	return &MasterNode{
-		ID:        state.ID,
-		Namespace: state.Namespace,
-		BlockMap:  state.BlockMap,
-		opLogFile: f, // <--- Assign the file handle!
-	}
+    return &MasterNode{
+        ID:        state.ID,
+        Namespace: state.Namespace,
+        BlockMap:  state.BlockMap,
+        opLogFile: f, 
+    }
 }
 
 func GetMasterNodeInstance() *MasterNode {

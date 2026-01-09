@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	CatalogService_GetProject_FullMethodName         = "/catalog.v1.CatalogService/GetProject"
+	CatalogService_RegisterDataFile_FullMethodName   = "/catalog.v1.CatalogService/RegisterDataFile"
 	CatalogService_PollCompactionJobs_FullMethodName = "/catalog.v1.CatalogService/PollCompactionJobs"
 	CatalogService_UpdateJobStatus_FullMethodName    = "/catalog.v1.CatalogService/UpdateJobStatus"
 )
@@ -31,6 +32,7 @@ type CatalogServiceClient interface {
 	// Project Management
 	GetProject(ctx context.Context, in *GetProjectRequest, opts ...grpc.CallOption) (*GetProjectResponse, error)
 	// Job Management (Compaction, etc.)
+	RegisterDataFile(ctx context.Context, in *RegisterDataFileRequest, opts ...grpc.CallOption) (*RegisterDataFileResponse, error)
 	PollCompactionJobs(ctx context.Context, in *PollCompactionJobsRequest, opts ...grpc.CallOption) (*PollCompactionJobsResponse, error)
 	UpdateJobStatus(ctx context.Context, in *UpdateJobStatusRequest, opts ...grpc.CallOption) (*UpdateJobStatusResponse, error)
 }
@@ -47,6 +49,16 @@ func (c *catalogServiceClient) GetProject(ctx context.Context, in *GetProjectReq
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetProjectResponse)
 	err := c.cc.Invoke(ctx, CatalogService_GetProject_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *catalogServiceClient) RegisterDataFile(ctx context.Context, in *RegisterDataFileRequest, opts ...grpc.CallOption) (*RegisterDataFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RegisterDataFileResponse)
+	err := c.cc.Invoke(ctx, CatalogService_RegisterDataFile_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -80,6 +92,7 @@ type CatalogServiceServer interface {
 	// Project Management
 	GetProject(context.Context, *GetProjectRequest) (*GetProjectResponse, error)
 	// Job Management (Compaction, etc.)
+	RegisterDataFile(context.Context, *RegisterDataFileRequest) (*RegisterDataFileResponse, error)
 	PollCompactionJobs(context.Context, *PollCompactionJobsRequest) (*PollCompactionJobsResponse, error)
 	UpdateJobStatus(context.Context, *UpdateJobStatusRequest) (*UpdateJobStatusResponse, error)
 	mustEmbedUnimplementedCatalogServiceServer()
@@ -94,6 +107,9 @@ type UnimplementedCatalogServiceServer struct{}
 
 func (UnimplementedCatalogServiceServer) GetProject(context.Context, *GetProjectRequest) (*GetProjectResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetProject not implemented")
+}
+func (UnimplementedCatalogServiceServer) RegisterDataFile(context.Context, *RegisterDataFileRequest) (*RegisterDataFileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RegisterDataFile not implemented")
 }
 func (UnimplementedCatalogServiceServer) PollCompactionJobs(context.Context, *PollCompactionJobsRequest) (*PollCompactionJobsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PollCompactionJobs not implemented")
@@ -136,6 +152,24 @@ func _CatalogService_GetProject_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CatalogServiceServer).GetProject(ctx, req.(*GetProjectRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _CatalogService_RegisterDataFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterDataFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CatalogServiceServer).RegisterDataFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CatalogService_RegisterDataFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CatalogServiceServer).RegisterDataFile(ctx, req.(*RegisterDataFileRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -186,6 +220,10 @@ var CatalogService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetProject",
 			Handler:    _CatalogService_GetProject_Handler,
+		},
+		{
+			MethodName: "RegisterDataFile",
+			Handler:    _CatalogService_RegisterDataFile_Handler,
 		},
 		{
 			MethodName: "PollCompactionJobs",

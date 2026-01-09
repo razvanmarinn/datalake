@@ -10,6 +10,7 @@ service CatalogService {
     rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
 
     // Job Management (Compaction, etc.)
+    rpc RegisterDataFile(RegisterDataFileRequest) returns (RegisterDataFileResponse);
     rpc PollCompactionJobs(PollCompactionJobsRequest) returns (PollCompactionJobsResponse);
     rpc UpdateJobStatus(UpdateJobStatusRequest) returns (UpdateJobStatusResponse);
 }
@@ -41,5 +42,19 @@ message UpdateJobStatusRequest {
 }
 
 message UpdateJobStatusResponse {
+    bool success = 1;
+}
+
+message RegisterDataFileRequest {
+    string project_id = 1;
+    string schema_name = 2;
+    string block_id = 3;
+    string worker_id = 4;
+    string file_path = 5;
+    int64 file_size = 6;
+    string file_format = 7; 
+}
+
+message RegisterDataFileResponse {
     bool success = 1;
 }
