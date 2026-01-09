@@ -1,10 +1,69 @@
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: master-sa
+  namespace: datalake
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: master-election-role
+  namespace: datalake
+rules:
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "create", "update", "patch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: master-election-binding
+  namespace: datalake
+subjects:
+- kind: ServiceAccount
+  name: master-sa
+roleRef:
+  kind: Role
+  name: master-election-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: master-headless
+  namespace: datalake
+spec:
+  clusterIP: None 
+  selector:
+    app: master
+  ports:
+  - port: 50055
+    name: grpc
+---
+apiVersion: v1
+kind: Service
 metadata:
   name: master
   namespace: datalake
 spec:
-  replicas: 1
+  type: ClusterIP
+  selector:
+    app: master
+    role: active 
+  ports:
+  - port: 50055
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: master
+  namespace: datalake
+spec:
+  serviceName: master-headless
+  replicas: 3
   selector:
     matchLabels:
       app: master
@@ -13,21 +72,22 @@ spec:
       labels:
         app: master
     spec:
+      serviceAccountName: master-sa
       containers:
         - name: master
           image: razvan1y/dfs-master:latest
-          imagePullPolicy: Always
           ports:
             - containerPort: 50055
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: master
-spec:
-  type: ClusterIP
-  ports:
-    - port: 50055
-      targetPort: 50055
-  selector:
-    app: master
+          env:
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          volumeMounts:
+            - name: global-storage
+              mountPath: /data
+              subPathExpr: $(HOSTNAME)
+      volumes:
+        - name: global-storage
+          persistentVolumeClaim:
+            claimName: global-data-pvc

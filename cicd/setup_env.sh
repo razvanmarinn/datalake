@@ -1,7 +1,7 @@
 #!/bin/bash
 
   minikube delete
-  minikube start --mount --mount-string="/Users/marinrazvan/Developer/datalake/worker_data:/datalake/worker_data" --memory 8192
+minikube start --mount --mount-string="/Users/marinrazvan/Developer/datalake/datalake_data:/datalake/data" --memory 8192
 
   eval $(minikube docker-env)
     

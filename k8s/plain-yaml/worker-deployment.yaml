@@ -10,7 +10,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: standard
   hostPath:
-    path: /datalake/worker_data
+    path: /datalake/data
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -77,7 +77,7 @@ spec:
         volumeMounts:
         - name: global-storage
           mountPath: /data
-          subPathExpr: $(POD_NAME)
+          subPathExpr: $(HOSTNAME)
       volumes:
       - name: global-storage
         persistentVolumeClaim:
