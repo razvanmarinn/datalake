@@ -2,17 +2,25 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net"
 	"os"
-	"os/signal"
-	"syscall"
+	"time"
 
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
+
 	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
+	replicationv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/replication/v1"
 	"github.com/razvanmarinn/dfs/internal/nodes"
 )
 
@@ -27,6 +35,10 @@ type server struct {
 }
 
 func (s *server) AllocateBlock(ctx context.Context, req *coordinatorv1.AllocateBlockRequest) (*coordinatorv1.AllocateBlockResponse, error) {
+	if !s.masterNode.IsActive {
+		return nil, fmt.Errorf("node is standby, not active leader")
+	}
+
 	s.logger.Info("Received AllocateBlock request",
 		zap.String("project_id", req.ProjectId),
 		zap.Int64("size", req.SizeBytes))
@@ -40,6 +52,9 @@ func (s *server) AllocateBlock(ctx context.Context, req *coordinatorv1.AllocateB
 }
 
 func (s *server) CommitFile(ctx context.Context, req *coordinatorv1.CommitFileRequest) (*coordinatorv1.CommitFileResponse, error) {
+	if !s.masterNode.IsActive {
+		return &coordinatorv1.CommitFileResponse{Success: false}, fmt.Errorf("node is standby")
+	}
 	s.logger.Info("Received CommitFile request", zap.String("file_path", req.FilePath))
 
 	_, err := s.masterNode.CommitFile(req)
@@ -51,8 +66,11 @@ func (s *server) CommitFile(ctx context.Context, req *coordinatorv1.CommitFileRe
 	return &coordinatorv1.CommitFileResponse{Success: true}, nil
 }
 
-// 3. GetFileMetadata
 func (s *server) GetFileMetadata(ctx context.Context, req *coordinatorv1.GetFileMetadataRequest) (*coordinatorv1.GetFileMetadataResponse, error) {
+	// Reads *might* be allowed on standby in the future, but for now block them to ensure consistency
+	if !s.masterNode.IsActive {
+		return nil, fmt.Errorf("node is standby")
+	}
 	s.logger.Info("Received GetFileMetadata request", zap.String("file_path", req.FilePath))
 
 	resp, err := s.masterNode.GetFileMetadata(req.ProjectId, req.FilePath)
@@ -63,8 +81,10 @@ func (s *server) GetFileMetadata(ctx context.Context, req *coordinatorv1.GetFile
 	return resp, nil
 }
 
-// 4. ListFiles
 func (s *server) ListFiles(ctx context.Context, req *coordinatorv1.ListFilesRequest) (*coordinatorv1.ListFilesResponse, error) {
+	if !s.masterNode.IsActive {
+		return nil, fmt.Errorf("node is standby")
+	}
 	files, err := s.masterNode.ListFiles(req.ProjectId, req.DirectoryPrefix)
 	if err != nil {
 		s.logger.Error("ListFiles failed", zap.Error(err))
@@ -73,54 +93,131 @@ func (s *server) ListFiles(ctx context.Context, req *coordinatorv1.ListFilesRequ
 	return &coordinatorv1.ListFilesResponse{FilePaths: files}, nil
 }
 
-// 5. CommitCompaction (Stub)
 func (s *server) CommitCompaction(ctx context.Context, req *coordinatorv1.CommitCompactionRequest) (*coordinatorv1.CommitCompactionResponse, error) {
 	return &coordinatorv1.CommitCompactionResponse{Success: true}, nil
 }
+
+type replicationServer struct {
+	replicationv1.UnimplementedReplicationServiceServer
+	masterNode *nodes.MasterNode
+	logger     *logging.Logger
+}
+
+func (s *replicationServer) ReplicateLog(ctx context.Context, req *replicationv1.ReplicateLogRequest) (*replicationv1.ReplicateLogResponse, error) {
+	if s.masterNode.IsActive {
+		return &replicationv1.ReplicateLogResponse{Success: false}, fmt.Errorf("I am leader, cannot follow")
+	}
+
+	s.logger.Debug("Received Replication Log", zap.Int32("op_type", req.OpType))
+
+	err := s.masterNode.ApplyReplicatedLog(nodes.OpType(req.OpType), req.Payload)
+	return &replicationv1.ReplicateLogResponse{Success: err == nil}, err
+}
+
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	logger := logging.NewDefaultLogger("master_node")
 	defer logger.Sync()
 
-	// Initialize State and MasterNode
-	state := nodes.NewMasterNodeState()
-	_ = state.LoadStateFromFile() // Handle error properly in prod
-
-	masterNode := nodes.GetMasterNodeInstance()
-
-	// IMPORTANT: Initialize LoadBalancer before starting server
-	if err := masterNode.InitializeLoadBalancer(3, 50051); err != nil {
-		logger.Fatal("Failed to init load balancer", zap.Error(err))
+	k8sConfig, err := rest.InClusterConfig()
+	if err != nil {
+		logger.Fatal("Failed to get k8s config (are you running locally?)", zap.Error(err))
 	}
-	defer masterNode.CloseLoadBalancer()
+	k8sClient := kubernetes.NewForConfigOrDie(k8sConfig)
+
+	state := nodes.NewMasterNodeState()
+	_ = state.LoadStateFromFile()
+	masterNode := nodes.GetMasterNodeInstance()
+	masterNode.IsActive = false 
 
 	lis, err := net.Listen("tcp", port)
 	if err != nil {
 		logger.Fatal("Failed to listen", zap.Error(err))
 	}
 
-	s := grpc.NewServer()
+	grpcServer := grpc.NewServer()
 
-	// Register the Coordinator Service
-	coordinatorv1.RegisterCoordinatorServiceServer(s, &server{
+	coordinatorv1.RegisterCoordinatorServiceServer(grpcServer, &server{
 		masterNode: masterNode,
 		logger:     logger,
 	})
 
-	logger.Info("Coordinator Service listening", zap.String("address", port))
+	replicationv1.RegisterReplicationServiceServer(grpcServer, &replicationServer{
+		masterNode: masterNode,
+		logger:     logger,
+	})
 
-	// Graceful Shutdown Logic
 	go func() {
-		sigs := make(chan os.Signal, 1)
-		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-		<-sigs
-		logger.Info("Shutting down...")
-		s.GracefulStop()
-		masterNode.Stop()
+		logger.Info("gRPC Server listening (waiting for election)", zap.String("address", port))
+		if err := grpcServer.Serve(lis); err != nil {
+			logger.Fatal("Server failed", zap.Error(err))
+		}
 	}()
 
-	if err := s.Serve(lis); err != nil {
-		logger.Fatal("Server failed", zap.Error(err))
+	id := os.Getenv("HOSTNAME") 
+	if id == "" {
+		id = "unknown-node"
 	}
+
+	lock := &resourcelock.LeaseLock{
+		LeaseMeta: metav1.ObjectMeta{
+			Name:      "dfs-master-lock",
+			Namespace: "datalake", 
+		},
+		Client: k8sClient.CoordinationV1(),
+		LockConfig: resourcelock.ResourceLockConfig{
+			Identity: id,
+		},
+	}
+
+	logger.Info("Starting Leader Election", zap.String("id", id))
+
+	leaderelection.RunOrDie(context.Background(), leaderelection.LeaderElectionConfig{
+		Lock:            lock,
+		ReleaseOnCancel: true,
+		LeaseDuration:   15 * time.Second,
+		RenewDeadline:   10 * time.Second,
+		RetryPeriod:     2 * time.Second,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(ctx context.Context) {
+				logger.Info(">>> I AM THE MASTER NOW <<<")
+
+				masterNode.IsActive = true
+
+				masterNode.Replicator = nodes.NewReplicator(id)
+
+				if err := masterNode.InitializeLoadBalancer(3, 50051); err != nil {
+					logger.Error("Failed to init load balancer", zap.Error(err))
+				}
+
+				if err := promoteSelf(k8sClient, id, "datalake"); err != nil {
+					logger.Error("Failed to patch pod label", zap.Error(err))
+				}
+			},
+			OnStoppedLeading: func() {
+				logger.Info(">>> I LOST LEADERSHIP <<<")
+				os.Exit(1)
+			},
+			OnNewLeader: func(identity string) {
+				if identity == id {
+					return
+				}
+				logger.Info("New leader elected", zap.String("leader", identity))
+			},
+		},
+	})
+}
+
+func promoteSelf(client kubernetes.Interface, podName, namespace string) error {
+	patchData := []byte(`{"metadata":{"labels":{"role":"active"}}}`)
+
+	_, err := client.CoreV1().Pods(namespace).Patch(
+		context.TODO(),
+		podName,
+		types.StrategicMergePatchType,
+		patchData,
+		metav1.PatchOptions{},
+	)
+	return err
 }

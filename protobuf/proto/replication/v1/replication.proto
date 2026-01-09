@@ -1,0 +1,19 @@
+syntax = "proto3";
+package replication.v1;
+
+option go_package = "github.com/razvanmarinn/datalake/protobuf/gen/go/replication/v1;replicationv1";
+
+service ReplicationService {
+  rpc ReplicateLog(ReplicateLogRequest) returns (ReplicateLogResponse);
+}
+
+message ReplicateLogRequest {
+  int64 timestamp = 1;
+  int32 op_type = 2;
+  bytes payload = 3;
+}
+
+message ReplicateLogResponse {
+  bool success = 1;
+  string error_message = 2;
+}

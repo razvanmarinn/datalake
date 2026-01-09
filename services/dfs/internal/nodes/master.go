@@ -1,6 +1,7 @@
 package nodes
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -44,6 +45,8 @@ type MasterNode struct {
 	opLock       sync.Mutex
 	LoadBalancer *load_balancer.LoadBalancer
 	lock         sync.Mutex
+	IsActive     bool
+	Replicator   *Replicator
 }
 
 func (mn *MasterNode) appendToLog(op OperationLogEntry) error {
@@ -55,7 +58,14 @@ func (mn *MasterNode) appendToLog(op OperationLogEntry) error {
 	if _, err := mn.opLogFile.Write(append(data, '\n')); err != nil {
 		return err
 	}
-	return mn.opLogFile.Sync()
+	mn.opLogFile.Sync()
+	if mn.IsActive && mn.Replicator != nil {
+		if err := mn.Replicator.SendToQuorum(context.Background(), op); err != nil {
+			log.Fatalf("Critical: Lost Quorum during write: %v", err)
+		}
+	}
+
+	return nil
 }
 
 func NewMasterNode() *MasterNode {
@@ -68,8 +78,24 @@ func NewMasterNode() *MasterNode {
 		ID:        uuid.New().String(),
 		Namespace: make(map[string]*Inode),
 		BlockMap:  make(map[uuid.UUID]*BlockMetadata),
-		opLogFile: f, // <--- Assign the file handle!
+		opLogFile: f,
 	}
+}
+
+func (mn *MasterNode) ApplyReplicatedLog(opType OpType, payload []byte) error {
+    mn.lock.Lock() // Lock the whole state
+    defer mn.lock.Unlock()
+    
+    if opType == OpRegisterFile {
+        var inode Inode
+        json.Unmarshal(payload, &inode)
+        mn.Namespace[inode.Path] = &inode
+    }
+    
+    op := OperationLogEntry{OpType: opType, Payload: payload /* logic needed */}
+    mn.appendToLog(op) 
+    
+    return nil
 }
 
 func NewMasterNodeWithState(state *MasterNodeState) *MasterNode {
