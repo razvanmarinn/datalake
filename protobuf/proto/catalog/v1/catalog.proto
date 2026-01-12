@@ -34,6 +34,7 @@ message PollCompactionJobsResponse {
     string schema_name = 3;
     repeated string target_files = 4;
     string project_name = 5;
+    string output_file_path = 6;
 }
 
 message UpdateJobStatusRequest {
@@ -53,7 +54,7 @@ message RegisterDataFileRequest {
     string worker_id = 4;
     string file_path = 5;
     int64 file_size = 6;
-    string file_format = 7; 
+    string file_format = 7;
 }
 
 message RegisterDataFileResponse {
