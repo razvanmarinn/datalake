@@ -2,17 +2,37 @@ package handlers
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/linkedin/goavro/v2"
 	"github.com/razvanmarinn/query_service/internal/grpc"
+	"github.com/xitongsys/parquet-go/reader"
+	"github.com/xitongsys/parquet-go/source"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
+
+// MemoryFile helper to make bytes.Reader compatible with Parquet Reader source interface
+type MemoryFile struct {
+	*bytes.Reader
+}
+
+func (m *MemoryFile) Open(name string) (source.ParquetFile, error) { return m, nil }
+func (m *MemoryFile) Create(name string) (source.ParquetFile, error) {
+	return nil, fmt.Errorf("read only")
+}
+func (m *MemoryFile) Close() error { return nil }
+
+// FIX: Add the missing Write method to satisfy the interface
+func (m *MemoryFile) Write(p []byte) (n int, err error) {
+	return 0, fmt.Errorf("read only: write not supported")
+}
 
 // QueryHandler is a handler for the query service.
 type QueryHandler struct {
@@ -79,11 +99,9 @@ func (h *QueryHandler) GetFileList(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"files": resp.FilePaths})
 }
 
-// GetData retrieves file data by fetching blocks from DataNodes.
 func (h *QueryHandler) GetData(c *gin.Context) {
 	h.QueryCounter.Add(c.Request.Context(), 1)
 
-	// 1. Parse Parameters
 	projectID := c.Param("project") // Assuming route is /:project/data
 	fileName := c.Query("file_name")
 
@@ -102,10 +120,8 @@ func (h *QueryHandler) GetData(c *gin.Context) {
 		return
 	}
 
-	// 3. Fetch Blocks from DataNodes
 	var fileBuffer bytes.Buffer
 
-	// Iterate over blocks in order
 	for _, blockInfo := range metadata.Blocks {
 		blockID := blockInfo.BlockId
 
@@ -161,8 +177,6 @@ func (h *QueryHandler) GetSchemaData(c *gin.Context) {
 		zap.String("owner", ownerId),
 	)
 
-	// 1. List Files
-	// Optimization: Pass schema name as prefix if your naming convention supports it (e.g. "project_schema_")
 	prefix := fmt.Sprintf("%s/", schemaName)
 
 	fileListResp, err := h.MasterClient.ListFiles(c.Request.Context(), projectID, prefix)
@@ -175,15 +189,17 @@ func (h *QueryHandler) GetSchemaData(c *gin.Context) {
 	var tableData []interface{}
 
 	for _, fileName := range fileListResp.FilePaths {
-		// FIX 2: Use the updated validation logic
 		if !isStackPartOfSchema(fileName, schemaName) {
 			continue
 		}
 
+		fullPath := filepath.Join(projectID, fileName)
+
 		// 2. Get Metadata
-		metadata, err := h.MasterClient.GetFileMetadata(c.Request.Context(), projectID, fileName)
+		metadata, err := h.MasterClient.GetFileMetadata(c.Request.Context(), projectID, fullPath)
 		if err != nil {
-			h.logger.Warn("Skipping file due to metadata error", zap.String("file", fileName), zap.Error(err))
+			// This often happens if the file was recently compacted/deleted
+			h.logger.Warn("Skipping file due to metadata error (possibly compacted)", zap.String("file", fullPath), zap.Error(err))
 			continue
 		}
 
@@ -210,15 +226,26 @@ func (h *QueryHandler) GetSchemaData(c *gin.Context) {
 			fileBuffer.Write(data)
 		}
 
-		// 4. Parse Avro
-		if fileBuffer.Len() > 0 {
-			records, err := parseAvroOCF(fileBuffer.Bytes())
-			if err != nil {
-				h.logger.Warn("Failed to parse Avro file", zap.String("file", fileName), zap.Error(err))
-				continue
-			}
-			tableData = append(tableData, records...)
+		if fileBuffer.Len() == 0 {
+			continue
 		}
+
+		var records []interface{}
+		var parseErr error
+
+		if strings.HasSuffix(fileName, ".parquet") {
+			records, parseErr = parseParquetBytes(fileBuffer.Bytes())
+		} else {
+			// Default to Avro
+			records, parseErr = parseAvroOCF(fileBuffer.Bytes())
+		}
+
+		if parseErr != nil {
+			h.logger.Warn("Failed to parse file", zap.String("file", fileName), zap.Error(parseErr))
+			continue
+		}
+
+		tableData = append(tableData, records...)
 	}
 
 	h.logger.Info("Successfully aggregated schema data",
@@ -229,24 +256,19 @@ func (h *QueryHandler) GetSchemaData(c *gin.Context) {
 }
 
 func isStackPartOfSchema(filename string, schema string) bool {
-
 	prefixDir := fmt.Sprintf("%s/", schema)
-
 	prefixFile := fmt.Sprintf("%s_", schema)
-
 	return strings.HasPrefix(filename, prefixDir) || strings.HasPrefix(filename, prefixFile)
 }
 
 func parseAvroOCF(data []byte) ([]interface{}, error) {
 	reader := bytes.NewReader(data)
-
 	ocfReader, err := goavro.NewOCFReader(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OCF reader: %w", err)
 	}
 
 	var rows []interface{}
-
 	for ocfReader.Scan() {
 		datum, err := ocfReader.Read()
 		if err != nil {
@@ -260,4 +282,34 @@ func parseAvroOCF(data []byte) ([]interface{}, error) {
 	}
 
 	return rows, nil
+}
+
+func parseParquetBytes(data []byte) ([]interface{}, error) {
+	memFile := &MemoryFile{Reader: bytes.NewReader(data)}
+
+	pr, err := reader.NewParquetReader(memFile, nil, 4)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create parquet reader: %w", err)
+	}
+	defer pr.ReadStop()
+
+	num := int(pr.GetNumRows())
+	if num == 0 {
+		return []interface{}{}, nil
+	}
+
+	jsonRecords := make([]string, num)
+	if err := pr.Read(&jsonRecords); err != nil {
+		return nil, fmt.Errorf("failed to read parquet rows: %w", err)
+	}
+
+	results := make([]interface{}, 0, num)
+	for _, jsonStr := range jsonRecords {
+		var rec map[string]interface{}
+		if err := json.Unmarshal([]byte(jsonStr), &rec); err == nil {
+			results = append(results, rec)
+		}
+	}
+
+	return results, nil
 }

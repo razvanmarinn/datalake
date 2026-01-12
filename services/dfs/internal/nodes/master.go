@@ -19,7 +19,9 @@ import (
 )
 
 var singleInstance *MasterNode
+
 const storageDir = "/data"
+
 type OpType int
 
 const (
@@ -69,59 +71,59 @@ func (mn *MasterNode) appendToLog(op OperationLogEntry) error {
 }
 
 func NewMasterNode() *MasterNode {
-    logPath := filepath.Join(storageDir, "master_op.log")
+	logPath := filepath.Join(storageDir, "master_op.log")
 
-    if err := os.MkdirAll(storageDir, 0755); err != nil {
-        log.Printf("Warning: could not create storage dir: %v", err)
-    }
+	if err := os.MkdirAll(storageDir, 0755); err != nil {
+		log.Printf("Warning: could not create storage dir: %v", err)
+	}
 
-    f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-    if err != nil {
-        log.Fatalf("Failed to open operation log at %s: %v", logPath, err)
-    }
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("Failed to open operation log at %s: %v", logPath, err)
+	}
 
-    return &MasterNode{
-        ID:        uuid.New().String(),
-        Namespace: make(map[string]*Inode),
-        BlockMap:  make(map[uuid.UUID]*BlockMetadata),
-        opLogFile: f,
-    }
+	return &MasterNode{
+		ID:        uuid.New().String(),
+		Namespace: make(map[string]*Inode),
+		BlockMap:  make(map[uuid.UUID]*BlockMetadata),
+		opLogFile: f,
+	}
 }
 
 func (mn *MasterNode) ApplyReplicatedLog(opType OpType, payload []byte) error {
-    mn.lock.Lock() // Lock the whole state
-    defer mn.lock.Unlock()
-    
-    if opType == OpRegisterFile {
-        var inode Inode
-        json.Unmarshal(payload, &inode)
-        mn.Namespace[inode.Path] = &inode
-    }
-    
-    op := OperationLogEntry{OpType: opType, Payload: payload /* logic needed */}
-    mn.appendToLog(op) 
-    
-    return nil
+	mn.lock.Lock() // Lock the whole state
+	defer mn.lock.Unlock()
+
+	if opType == OpRegisterFile {
+		var inode Inode
+		json.Unmarshal(payload, &inode)
+		mn.Namespace[inode.Path] = &inode
+	}
+
+	op := OperationLogEntry{OpType: opType, Payload: payload /* logic needed */}
+	mn.appendToLog(op)
+
+	return nil
 }
 
 func NewMasterNodeWithState(state *MasterNodeState) *MasterNode {
-    if state.ID == "" {
-        return NewMasterNode()
-    }
+	if state.ID == "" {
+		return NewMasterNode()
+	}
 
-    logPath := filepath.Join(storageDir, "master_op.log")
-    
-    f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-    if err != nil {
-        log.Fatalf("Failed to open operation log at %s: %v", logPath, err)
-    }
+	logPath := filepath.Join(storageDir, "master_op.log")
 
-    return &MasterNode{
-        ID:        state.ID,
-        Namespace: state.Namespace,
-        BlockMap:  state.BlockMap,
-        opLogFile: f, 
-    }
+	f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Fatalf("Failed to open operation log at %s: %v", logPath, err)
+	}
+
+	return &MasterNode{
+		ID:        state.ID,
+		Namespace: state.Namespace,
+		BlockMap:  state.BlockMap,
+		opLogFile: f,
+	}
 }
 
 func GetMasterNodeInstance() *MasterNode {
@@ -294,11 +296,7 @@ func (mn *MasterNode) AllocateBlock(req *coordinatorv1.AllocateBlockRequest) (*c
 		TargetDatanodes: targetNodes,
 	}, nil
 }
-
-func (mn *MasterNode) CommitFile(req *coordinatorv1.CommitFileRequest) (*Inode, error) {
-	mn.lock.Lock()
-	defer mn.lock.Unlock()
-
+func (mn *MasterNode) commitFileInternal(req *coordinatorv1.CommitFileRequest) (*Inode, error) {
 	if req.ProjectId == "" || req.FilePath == "" {
 		return nil, fmt.Errorf("invalid project_id or file_path")
 	}
@@ -314,6 +312,7 @@ func (mn *MasterNode) CommitFile(req *coordinatorv1.CommitFileRequest) (*Inode, 
 	if len(parts) > 2 {
 		mn.ensureDirectory(dirPath, filepath.Base(dirPath), "system", req.ProjectId)
 	}
+
 	var totalSize int64
 	blockUUIDs := make([]uuid.UUID, 0, len(req.Blocks))
 
@@ -337,8 +336,8 @@ func (mn *MasterNode) CommitFile(req *coordinatorv1.CommitFileRequest) (*Inode, 
 
 	inode := &Inode{
 		ID:        uuid.New().String(),
-		Name:      filepath.Base(fullPath), // e.g. "hhh_2026.avro"
-		Path:      fullPath,                // e.g. "yes/hhh/hhh_2026.avro"
+		Name:      filepath.Base(fullPath),
+		Path:      fullPath,
 		Type:      FileType,
 		ProjectID: req.ProjectId,
 		OwnerID:   req.OwnerId,
@@ -366,11 +365,64 @@ func (mn *MasterNode) CommitFile(req *coordinatorv1.CommitFileRequest) (*Inode, 
 	return inode, nil
 }
 
+func (mn *MasterNode) CommitFile(req *coordinatorv1.CommitFileRequest) (*Inode, error) {
+	mn.lock.Lock()
+	defer mn.lock.Unlock()
+	return mn.commitFileInternal(req)
+}
+
+func (mn *MasterNode) CommitCompaction(req *coordinatorv1.CommitCompactionRequest) error {
+	mn.lock.Lock()
+	defer mn.lock.Unlock()
+
+	log.Printf("Starting Atomic Swap for Compaction. New File: %s", req.NewFile.FilePath)
+
+	_, err := mn.commitFileInternal(req.NewFile)
+	if err != nil {
+		return fmt.Errorf("failed to register new compacted file: %w", err)
+	}
+
+	for _, oldPath := range req.OldFilePaths {
+		path := filepath.Clean(oldPath)
+
+		inode, exists := mn.Namespace[path]
+		if !exists {
+			log.Printf("Warning: Compaction tried to delete non-existent file: %s", path)
+			continue
+		}
+
+		delete(mn.Namespace, path)
+
+		dirPath := filepath.Dir(path)
+		if parent, ok := mn.Namespace[dirPath]; ok {
+			newChildren := make([]string, 0)
+			for _, childID := range parent.Children {
+				if childID != inode.ID {
+					newChildren = append(newChildren, childID)
+				}
+			}
+			parent.Children = newChildren
+		}
+
+		op := OperationLogEntry{
+			OpType:    OpDeleteFile,
+			Timestamp: time.Now().Unix(),
+			Payload:   inode,
+		}
+		if err := mn.appendToLog(op); err != nil {
+			log.Printf("Error logging deletion for %s: %v", path, err)
+		}
+	}
+
+	log.Printf("Compaction Swap Complete. Removed %d files.", len(req.OldFilePaths))
+	return nil
+}
+
 func (mn *MasterNode) GetFileMetadata(projectID, filePath string) (*coordinatorv1.GetFileMetadataResponse, error) {
 	mn.lock.Lock()
 	defer mn.lock.Unlock()
 
-	fullPath := filepath.Join(projectID, filePath)
+	fullPath := filepath.Clean(filePath)
 	inode, exists := mn.Namespace[fullPath]
 	if !exists {
 		return nil, fmt.Errorf("file not found: %s", fullPath)

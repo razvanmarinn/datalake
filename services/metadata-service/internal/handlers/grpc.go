@@ -66,6 +66,7 @@ func (s *GRPCServer) PollCompactionJobs(ctx context.Context, req *catalogv1.Poll
 		ProjectName: job.ProjectName,
 		SchemaName:  schema.Name,
 		TargetFiles: job.TargetBlockIDs,
+		TargetPaths: job.TargetPaths,
 	}, nil
 }
 
@@ -94,7 +95,6 @@ func (s *GRPCServer) UpdateJobStatus(ctx context.Context, req *catalogv1.UpdateJ
 		Success: true,
 	}, nil
 }
-
 
 func (s *GRPCServer) RegisterDataFile(ctx context.Context, req *catalogv1.RegisterDataFileRequest) (*catalogv1.RegisterDataFileResponse, error) {
 	s.Logger.Info("Received RegisterDataFile request",

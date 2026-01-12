@@ -114,6 +114,12 @@ github.com/razvanmarinn/datalake v0.0.0-20260107173813-fb521a7382d6 h1:sGMo4yoJn
 github.com/razvanmarinn/datalake v0.0.0-20260107173813-fb521a7382d6/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
 github.com/razvanmarinn/datalake v0.0.0-20260109114312-42c57cb6e776 h1:HL/5/zgsUje0Zw/bcZlS2mC07/OAWyUvye+Y0l3iJs0=
 github.com/razvanmarinn/datalake v0.0.0-20260109114312-42c57cb6e776/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
+github.com/razvanmarinn/datalake v0.0.0-20260109122313-5628a746bc0f h1:CKk8oPdf8WKOgOy43wif6huoJIJvrdiZoC3HnfciWdg=
+github.com/razvanmarinn/datalake v0.0.0-20260109122313-5628a746bc0f/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
+github.com/razvanmarinn/datalake v0.0.0-20260112170456-bcdae8407dbd h1:Y2nx0L/fz4OhAyiieVwTaZA0h9plshmQtRj8OtGbV+s=
+github.com/razvanmarinn/datalake v0.0.0-20260112170456-bcdae8407dbd/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
+github.com/razvanmarinn/datalake v0.0.0-20260112172048-c4b855933509 h1:wHEKT3w8+cL7cCvNTLn7BU3/cCVaXUDb7lJf7y4EF7A=
+github.com/razvanmarinn/datalake v0.0.0-20260112172048-c4b855933509/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/segmentio/kafka-go v0.4.49 h1:GJiNX1d/g+kG6ljyJEoi9++PUMdXGAxb7JGPiDCuNmk=

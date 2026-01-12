@@ -231,15 +231,15 @@ func CreateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 
 func GetSchema(db *sql.DB, projectName, schemaName string) (*models.SchemaWithDetails, error) {
 	query := `
-        SELECT 
-            s.id, s.project_name, s.name, s.version, 
-            a.definition as avro_def, 
+        SELECT
+            s.id, s.project_name, s.name, s.version,
+            a.definition as avro_def,
             p.definition as parquet_def
         FROM schemas s
         JOIN avro_schemas a ON s.id = a.schema_id
         JOIN parquet_schemas p ON s.id = p.schema_id
         WHERE s.project_name = $1 AND s.name = $2
-        ORDER BY s.version DESC 
+        ORDER BY s.version DESC
         LIMIT 1`
 
 	var s models.SchemaWithDetails
@@ -256,9 +256,9 @@ func GetSchema(db *sql.DB, projectName, schemaName string) (*models.SchemaWithDe
 
 func GetSchemaByID(db *sql.DB, schemaID int) (*models.SchemaWithDetails, error) {
 	query := `
-        SELECT 
-            s.id, s.project_name, s.name, s.version, 
-            a.definition as avro_def, 
+        SELECT
+            s.id, s.project_name, s.name, s.version,
+            a.definition as avro_def,
             p.definition as parquet_def
         FROM schemas s
         JOIN avro_schemas a ON s.id = a.schema_id
@@ -340,7 +340,7 @@ func ListSchemas(db *sql.DB, projectName string) ([]models.SchemaWithDetails, er
 	// This distinct on logic gets the latest version for each schema name
 	query := `
         SELECT DISTINCT ON (s.name)
-            s.id, s.project_name, s.name, s.version, 
+            s.id, s.project_name, s.name, s.version,
             a.definition, p.definition
         FROM schemas s
         JOIN avro_schemas a ON s.id = a.schema_id
@@ -458,55 +458,80 @@ func CreateCompactionJob(db *sql.DB, projectID uuid.UUID, schemaID int, targetBl
 }
 
 func PollPendingCompactionJob(db *sql.DB) (*models.CompactionJob, error) {
-    query := `
-        SELECT 
-            j.id, 
-            j.project_id, 
-            p.name,          -- <--- 1. Select Project Name
-            j.schema_id, 
-            s.name, 
-            j.status, 
-            j.target_block_ids, 
-            j.created_at, 
-            j.updated_at
-        FROM compaction_jobs j
-        JOIN schemas s ON j.schema_id = s.id
-        JOIN projects p ON j.project_id = p.id  -- <--- 2. Join Projects Table
-        WHERE j.status = 'PENDING'
-        ORDER BY j.created_at ASC
-        LIMIT 1
-        FOR UPDATE SKIP LOCKED
-    `
-    row := db.QueryRow(query)
+	query := `
+		SELECT
+			j.id,
+			j.project_id,
+			p.name,
+			j.schema_id,
+			s.name,
+			j.status,
+			j.target_block_ids,
+			j.created_at,
+			j.updated_at
+		FROM compaction_jobs j
+		JOIN schemas s ON j.schema_id = s.id
+		JOIN project p ON j.project_id = p.id
+		WHERE j.status = 'PENDING'
+		ORDER BY j.created_at ASC
+		LIMIT 1
+		FOR UPDATE SKIP LOCKED
+	`
+	row := db.QueryRow(query)
 
-    job := &models.CompactionJob{}
-    var targetBlockIDs []sql.NullString
+	job := &models.CompactionJob{}
+	var targetBlockIDs []sql.NullString
 
-    err := row.Scan(
-        &job.ID,
-        &job.ProjectID,
-        &job.ProjectName, // <--- 3. Scan Project Name (Ensure this field exists in your struct)
-        &job.SchemaID,
-        &job.SchemaName,
-        &job.Status,
-        pq.Array(&targetBlockIDs),
-        &job.CreatedAt,
-        &job.UpdatedAt,
-    )
+	err := row.Scan(
+		&job.ID,
+		&job.ProjectID,
+		&job.ProjectName,
+		&job.SchemaID,
+		&job.SchemaName,
+		&job.Status,
+		pq.Array(&targetBlockIDs),
+		&job.CreatedAt,
+		&job.UpdatedAt,
+	)
 
-    if err != nil {
-        return nil, err 
-    }
+	if err != nil {
+		return nil, err
+	}
 
-    job.TargetBlockIDs = make([]string, len(targetBlockIDs))
-    for i, s := range targetBlockIDs {
-        job.TargetBlockIDs[i] = s.String
-    }
+	job.TargetBlockIDs = make([]string, 0, len(targetBlockIDs))
+	for _, s := range targetBlockIDs {
+		if s.Valid {
+			job.TargetBlockIDs = append(job.TargetBlockIDs, s.String)
+		}
+	}
 
-    return job, nil
+	if len(job.TargetBlockIDs) > 0 {
+		pathQuery := `
+			SELECT path
+			FROM data_files
+			WHERE block_id = ANY($1)
+		`
+		rows, err := db.Query(pathQuery, pq.Array(job.TargetBlockIDs))
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve paths for job %s: %w", job.ID, err)
+		}
+		defer rows.Close()
+
+		var paths []string
+		for rows.Next() {
+			var p string
+			if err := rows.Scan(&p); err != nil {
+				return nil, fmt.Errorf("error scanning path: %w", err)
+			}
+			paths = append(paths, p)
+		}
+
+		// Ensure you add this field to your model!
+		job.TargetPaths = paths
+	}
+
+	return job, nil
 }
-
-// UpdateCompactionJobStatus updates status, output file, and if completed, marks source files as compacted.
 func UpdateCompactionJobStatus(db *sql.DB, jobID uuid.UUID, status, outputFilePath string) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -514,12 +539,11 @@ func UpdateCompactionJobStatus(db *sql.DB, jobID uuid.UUID, status, outputFilePa
 	}
 	defer tx.Rollback()
 
-	// 1. Update the Job Status
 	queryUpdateJob := `
-        UPDATE compaction_jobs 
-        SET status = $1, output_file_path = $2, updated_at = $3 
-        WHERE id = $4
-        RETURNING target_block_ids`
+		UPDATE compaction_jobs
+		SET status = $1, output_file_path = $2, updated_at = $3
+		WHERE id = $4
+		RETURNING target_block_ids`
 
 	var targetBlockIDs []string
 	err = tx.QueryRow(queryUpdateJob, status, outputFilePath, time.Now(), jobID).Scan(pq.Array(&targetBlockIDs))
@@ -527,17 +551,19 @@ func UpdateCompactionJobStatus(db *sql.DB, jobID uuid.UUID, status, outputFilePa
 		return fmt.Errorf("failed to update job status: %w", err)
 	}
 
-	// 2. If Completed, Mark old files as compacted
 	if status == "COMPLETED" && len(targetBlockIDs) > 0 {
 		queryMarkCompacted := `
-            UPDATE data_files 
-            SET is_compacted = TRUE 
-            WHERE block_id = ANY($1)`
+			UPDATE data_files
+			SET is_compacted = TRUE
+			WHERE block_id = ANY($1)`
 
-		_, err = tx.Exec(queryMarkCompacted, pq.Array(targetBlockIDs))
+		res, err := tx.Exec(queryMarkCompacted, pq.Array(targetBlockIDs))
 		if err != nil {
 			return fmt.Errorf("failed to mark files as compacted: %w", err)
 		}
+
+		rowsAffected, _ := res.RowsAffected()
+		log.Printf("Marked %d files as compacted for Job %s", rowsAffected, jobID)
 	}
 
 	if err := tx.Commit(); err != nil {

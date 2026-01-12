@@ -28,7 +28,7 @@ type CompactionJob struct {
 	SchemaName     string
 	Status         string
 	TargetBlockIDs []string
-	OutputFilePath string
+	TargetPaths    []string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

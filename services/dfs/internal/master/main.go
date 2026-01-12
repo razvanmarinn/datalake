@@ -95,6 +95,20 @@ func (s *server) ListFiles(ctx context.Context, req *coordinatorv1.ListFilesRequ
 }
 
 func (s *server) CommitCompaction(ctx context.Context, req *coordinatorv1.CommitCompactionRequest) (*coordinatorv1.CommitCompactionResponse, error) {
+	if !s.masterNode.IsActive {
+		return &coordinatorv1.CommitCompactionResponse{Success: false}, fmt.Errorf("node is standby")
+	}
+
+	s.logger.Info("Received CommitCompaction request",
+		zap.String("project_id", req.ProjectId),
+		zap.Int("old_files_count", len(req.OldFilePaths)))
+
+	err := s.masterNode.CommitCompaction(req)
+	if err != nil {
+		s.logger.Error("Compaction Commit failed", zap.Error(err))
+		return &coordinatorv1.CommitCompactionResponse{Success: false}, err
+	}
+
 	return &coordinatorv1.CommitCompactionResponse{Success: true}, nil
 }
 

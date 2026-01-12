@@ -13,9 +13,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/linkedin/goavro/v2"
-	
-	// NEW: Specific imports
+
+	// Proto imports
 	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
 	commonv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/common/v1"
 	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
@@ -29,26 +30,29 @@ import (
 )
 
 type Config struct {
-	StorageRoot    string
-	SchemaAPI      string
-	CatalogClient  catalogv1.CatalogServiceClient // Renamed from MetadataClient
-	MasterClient   coordinatorv1.CoordinatorServiceClient   // Needed to commit the final file
+	StorageRoot   string
+	SchemaAPI     string
+	CatalogClient catalogv1.CatalogServiceClient
+	MasterClient  coordinatorv1.CoordinatorServiceClient
 }
 
 type Compactor struct {
-	config         Config
+	config              Config
 	dataNodeClientCache map[string]datanodev1.DataNodeServiceClient
-	cacheLock      sync.Mutex
+	cacheLock           sync.Mutex
+	// We keep track of active addresses to pick one for upload later
+	activeDataNodes []string
 }
 
 func NewCompactor(cfg Config) *Compactor {
 	return &Compactor{
-		config:         cfg,
+		config:              cfg,
 		dataNodeClientCache: make(map[string]datanodev1.DataNodeServiceClient),
+		activeDataNodes:     make([]string, 0),
 	}
 }
 
-// Helper: Connect to a DataNode
+// Helper: Connect to a DataNode and cache the connection
 func (c *Compactor) getDfsClient(addr string) (datanodev1.DataNodeServiceClient, error) {
 	c.cacheLock.Lock()
 	defer c.cacheLock.Unlock()
@@ -65,6 +69,7 @@ func (c *Compactor) getDfsClient(addr string) (datanodev1.DataNodeServiceClient,
 
 	client := datanodev1.NewDataNodeServiceClient(conn)
 	c.dataNodeClientCache[addr] = client
+	c.activeDataNodes = append(c.activeDataNodes, addr) // Track this node as available
 	return client, nil
 }
 
@@ -91,11 +96,7 @@ func (c *Compactor) FetchSchema(project, schemaName string) (*FetchSchemaRespons
 	}
 	return &schemaRes, nil
 }
-
-// Compact runs the full cycle: Fetch Job -> Read Blocks (Stream) -> Write Parquet -> Commit
-func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string, projectName string, schemaName string, targetFiles []string) error {
-	// 1. Update job status to 'RUNNING'
-	// Note: We use the Catalog for job tracking
+func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string, projectName string, schemaName string, targetFiles []string, targetPaths []string) error {
 	fmt.Println("🚀 Starting compaction job:", jobID)
 	_, err := c.config.CatalogClient.UpdateJobStatus(ctx, &catalogv1.UpdateJobStatusRequest{
 		JobId:  jobID,
@@ -105,116 +106,156 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 		return fmt.Errorf("failed to update job status: %w", err)
 	}
 
-	// Defer final status update
+	compactedFileName := fmt.Sprintf("compacted-%d.parquet", time.Now().Unix())
+	compactedFolder := filepath.Join(c.config.StorageRoot, projectID, schemaName, "compacted")
+	if err := os.MkdirAll(compactedFolder, 0755); err != nil {
+		return fmt.Errorf("failed to create local temp dir: %w", err)
+	}
+	localOutPath := filepath.Join(compactedFolder, compactedFileName)
+
+	// Define final status logic
 	var finalErr error
 	defer func() {
 		status := "COMPLETED"
 		if finalErr != nil {
 			status = "FAILED"
 		}
-		c.config.CatalogClient.UpdateJobStatus(context.Background(), &catalogv1.UpdateJobStatusRequest{
+
+		req := &catalogv1.UpdateJobStatusRequest{
 			JobId:  jobID,
 			Status: status,
-		})
+		}
+		if status == "COMPLETED" {
+			req.ResultFilePath = filepath.Join(schemaName, compactedFileName)
+		}
+
+		c.config.CatalogClient.UpdateJobStatus(context.Background(), req)
 	}()
 
-	// 2. Prepare Local Output
-	// In a real system, we would stream this back to DFS, but for now we write locally then upload
-	compactedFileName := fmt.Sprintf("compacted-%d.parquet", time.Now().Unix())
-	compactedFolder := filepath.Join(c.config.StorageRoot, projectID, schemaName, "compacted")
-	os.MkdirAll(compactedFolder, 0755)
-	localOutPath := filepath.Join(compactedFolder, compactedFileName)
-
-	// 3. Fetch Schemas
+	// Fetch Schema
 	schemas, err := c.FetchSchema(projectName, schemaName)
 	if err != nil {
 		finalErr = err
 		return err
 	}
 
-	// 4. Init Parquet Writer
+	// Init Parquet Writer
 	fw, err := local.NewLocalFileWriter(localOutPath)
 	if err != nil {
 		finalErr = err
 		return err
 	}
-	defer fw.Close()
-
 	pw, err := writer.NewJSONWriter(schemas.ParquetSchema, fw, 4)
 	if err != nil {
+		fw.Close()
 		finalErr = err
 		return err
 	}
 	pw.CompressionType = parquet.CompressionCodec_SNAPPY
 
-	// 5. Iterate over files and blocks
-	// We need to ask the Master where these files are located
-	for _, filePath := range targetFiles {
+	filesProcessed := 0
+	for _, filePath := range targetPaths {
+		log.Printf("Processing file: %s", filePath)
+
 		metaResp, err := c.config.MasterClient.GetFileMetadata(ctx, &coordinatorv1.GetFileMetadataRequest{
 			ProjectId: projectID,
 			FilePath:  filePath,
 		})
 		if err != nil {
-			log.Printf("Skipping file %s: %v", filePath, err)
+			log.Printf("Skipping file %s due to metadata error: %v", filePath, err)
 			continue
 		}
 
-		// Process each block in the file
+		if len(metaResp.Blocks) > 0 {
+			filesProcessed++
+		}
+
 		for _, block := range metaResp.Blocks {
 			locations, ok := metaResp.Locations[block.BlockId]
-			if !ok {
+			if !ok || locations == nil {
 				log.Printf("No location found for block %s", block.BlockId)
 				continue
 			}
 
-			// Try to read from the first available worker
-			// In production, you'd loop through locations if one fails
-			workerAddr := locations.Address // This comes from our new Common proto
-
+			workerAddr := locations.Address
 			dfsClient, err := c.getDfsClient(workerAddr)
 			if err != nil {
 				log.Printf("Failed to connect to worker %s: %v", workerAddr, err)
 				continue
 			}
 
-			// 6. STREAMING READ (Key Change)
 			data, err := c.streamBlockFromWorker(ctx, dfsClient, block.BlockId)
 			if err != nil {
 				log.Printf("Failed to stream block %s: %v", block.BlockId, err)
 				continue
 			}
 
-			// 7. Convert Avro -> Parquet
 			if err := c.appendAvroToParquet(data, pw); err != nil {
 				log.Printf("Conversion error on block %s: %v", block.BlockId, err)
 			}
 		}
 	}
 
+	if filesProcessed == 0 {
+		fw.Close()
+		os.Remove(localOutPath)
+		finalErr = fmt.Errorf("compaction aborted: no input files could be read")
+		return finalErr
+	}
+
 	if err := pw.WriteStop(); err != nil {
+		fw.Close()
+		finalErr = err
+		return err
+	}
+	fw.Close()
+
+	// Upload
+	fileInfo, err := os.Stat(localOutPath)
+	if err != nil {
 		finalErr = err
 		return err
 	}
 
-	fw.Close() // Ensure file is flushed to disk
+	fmt.Printf("Uploading compacted file (%d bytes)...\n", fileInfo.Size())
+	newBlocks, err := c.uploadCompactedFile(ctx, localOutPath)
+	if err != nil {
+		finalErr = err
+		return fmt.Errorf("failed to upload compacted file: %w", err)
+	}
 
-	// 8. Upload the new compacted file to DFS
-	// (Simulated here: In reality, you would stream 'localOutPath' to 'dfsClient.PushBlock')
-	// For this example, we assume we just register the local file or upload it.
-	// Let's assume we upload it and get a file info back.
-	
-	// ... Upload logic here ...
+	// --- NEW: Register the new file in Catalog (Postgres) ---
+	fullCompactedPath := filepath.Join(schemaName, compactedFileName)
 
-	// 9. Commit Atomic Swap on Master
-	// This tells the Master: "Delete the old small files, replace them with this big one"
+	// FIX: Use a valid UUID string
+	compactorWorkerUUID := uuid.New().String()
+
+	for _, block := range newBlocks {
+		_, err := c.config.CatalogClient.RegisterDataFile(ctx, &catalogv1.RegisterDataFileRequest{
+			ProjectId:  projectID,
+			SchemaName: schemaName,
+			BlockId:    block.BlockId,
+			WorkerId:   compactorWorkerUUID, // <--- FIXED HERE
+			FilePath:   fullCompactedPath,
+			FileSize:   block.Size,
+			FileFormat: "parquet",
+		})
+		if err != nil {
+			finalErr = err
+			return fmt.Errorf("failed to register compacted file in catalog: %w", err)
+		}
+	}
+
+	// Commit Atomic Swap
 	_, err = c.config.MasterClient.CommitCompaction(ctx, &coordinatorv1.CommitCompactionRequest{
 		ProjectId:    projectID,
-		OldFilePaths: targetFiles,
+		OldFilePaths: targetPaths,
 		NewFile: &coordinatorv1.CommitFileRequest{
 			ProjectId:  projectID,
-			FilePath:   filepath.Join(schemaName, compactedFileName),
+			FilePath:   fullCompactedPath,
 			FileFormat: "parquet",
-			Blocks: []*commonv1.BlockInfo{}, 
+			OwnerId:    "test-id",
+			Blocks:     newBlocks,
 		},
 	})
 
@@ -223,7 +264,8 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 		return fmt.Errorf("failed to commit compaction: %w", err)
 	}
 
-	log.Printf("✅ Compacted %d files into %s", len(targetFiles), localOutPath)
+	os.Remove(localOutPath)
+	log.Printf("✅ Compacted %d files into %s", filesProcessed, compactedFileName)
 	return nil
 }
 
@@ -242,7 +284,6 @@ func (c *Compactor) streamBlockFromWorker(ctx context.Context, client datanodev1
 		if err != nil {
 			return nil, err
 		}
-		// Accumulate chunks
 		dataBuffer.Write(resp.Chunk)
 	}
 	return dataBuffer.Bytes(), nil
@@ -271,4 +312,92 @@ func (c *Compactor) appendAvroToParquet(data []byte, pw *writer.JSONWriter) erro
 		}
 	}
 	return nil
+}
+
+func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string) ([]*commonv1.BlockInfo, error) {
+	file, err := os.Open(localPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// Pick a DataNode to upload to.
+	c.cacheLock.Lock()
+	var client datanodev1.DataNodeServiceClient
+	if len(c.activeDataNodes) > 0 {
+		client = c.dataNodeClientCache[c.activeDataNodes[0]]
+	}
+	c.cacheLock.Unlock()
+
+	if client == nil {
+		return nil, fmt.Errorf("no active data nodes available for upload")
+	}
+
+	const blockSize = 128 * 1024 * 1024 // 128MB Blocks
+	const streamChunkSize = 64 * 1024   // 64KB Network Chunks
+
+	buffer := make([]byte, blockSize)
+	var blocks []*commonv1.BlockInfo
+
+	for {
+		bytesRead, err := file.Read(buffer)
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+		if bytesRead == 0 {
+			break
+		}
+
+		newBlockID := uuid.New().String()
+
+		stream, err := client.PushBlock(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create upload stream: %w", err)
+		}
+
+		metaReq := &datanodev1.PushBlockRequest{
+			Data: &datanodev1.PushBlockRequest_Metadata{
+				Metadata: &datanodev1.BlockMetadata{
+					BlockId:   newBlockID,
+					TotalSize: int64(bytesRead),
+				},
+			},
+		}
+		if err := stream.Send(metaReq); err != nil {
+			return nil, fmt.Errorf("failed to send metadata for block %s: %w", newBlockID, err)
+		}
+
+		currentBlockData := buffer[:bytesRead]
+		for i := 0; i < len(currentBlockData); i += streamChunkSize {
+			end := i + streamChunkSize
+			if end > len(currentBlockData) {
+				end = len(currentBlockData)
+			}
+
+			chunkReq := &datanodev1.PushBlockRequest{
+				Data: &datanodev1.PushBlockRequest_Chunk{
+					Chunk: currentBlockData[i:end],
+				},
+			}
+
+			if err := stream.Send(chunkReq); err != nil {
+				return nil, fmt.Errorf("failed to send chunk for block %s: %w", newBlockID, err)
+			}
+		}
+
+		resp, err := stream.CloseAndRecv()
+		if err != nil {
+			return nil, fmt.Errorf("datanode stream error for block %s: %w", newBlockID, err)
+		}
+		if !resp.Success {
+			return nil, fmt.Errorf("datanode rejected block %s: %s", newBlockID, resp.Message)
+		}
+
+		blocks = append(blocks, &commonv1.BlockInfo{
+			BlockId: newBlockID,
+			Size:    int64(bytesRead),
+		})
+	}
+
+	return blocks, nil
 }
