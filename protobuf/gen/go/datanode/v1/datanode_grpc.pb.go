@@ -22,6 +22,7 @@ const (
 	DataNodeService_PushBlock_FullMethodName     = "/datanode.v1.DataNodeService/PushBlock"
 	DataNodeService_FetchBlock_FullMethodName    = "/datanode.v1.DataNodeService/FetchBlock"
 	DataNodeService_GetWorkerInfo_FullMethodName = "/datanode.v1.DataNodeService/GetWorkerInfo"
+	DataNodeService_DeleteBlock_FullMethodName   = "/datanode.v1.DataNodeService/DeleteBlock"
 )
 
 // DataNodeServiceClient is the client API for DataNodeService service.
@@ -31,6 +32,7 @@ type DataNodeServiceClient interface {
 	PushBlock(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[PushBlockRequest, PushBlockResponse], error)
 	FetchBlock(ctx context.Context, in *FetchBlockRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FetchBlockResponse], error)
 	GetWorkerInfo(ctx context.Context, in *GetWorkerInfoRequest, opts ...grpc.CallOption) (*GetWorkerInfoResponse, error)
+	DeleteBlock(ctx context.Context, in *DeleteBlockRequest, opts ...grpc.CallOption) (*DeleteBlockResponse, error)
 }
 
 type dataNodeServiceClient struct {
@@ -83,6 +85,16 @@ func (c *dataNodeServiceClient) GetWorkerInfo(ctx context.Context, in *GetWorker
 	return out, nil
 }
 
+func (c *dataNodeServiceClient) DeleteBlock(ctx context.Context, in *DeleteBlockRequest, opts ...grpc.CallOption) (*DeleteBlockResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteBlockResponse)
+	err := c.cc.Invoke(ctx, DataNodeService_DeleteBlock_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DataNodeServiceServer is the server API for DataNodeService service.
 // All implementations must embed UnimplementedDataNodeServiceServer
 // for forward compatibility.
@@ -90,6 +102,7 @@ type DataNodeServiceServer interface {
 	PushBlock(grpc.ClientStreamingServer[PushBlockRequest, PushBlockResponse]) error
 	FetchBlock(*FetchBlockRequest, grpc.ServerStreamingServer[FetchBlockResponse]) error
 	GetWorkerInfo(context.Context, *GetWorkerInfoRequest) (*GetWorkerInfoResponse, error)
+	DeleteBlock(context.Context, *DeleteBlockRequest) (*DeleteBlockResponse, error)
 	mustEmbedUnimplementedDataNodeServiceServer()
 }
 
@@ -108,6 +121,9 @@ func (UnimplementedDataNodeServiceServer) FetchBlock(*FetchBlockRequest, grpc.Se
 }
 func (UnimplementedDataNodeServiceServer) GetWorkerInfo(context.Context, *GetWorkerInfoRequest) (*GetWorkerInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetWorkerInfo not implemented")
+}
+func (UnimplementedDataNodeServiceServer) DeleteBlock(context.Context, *DeleteBlockRequest) (*DeleteBlockResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method DeleteBlock not implemented")
 }
 func (UnimplementedDataNodeServiceServer) mustEmbedUnimplementedDataNodeServiceServer() {}
 func (UnimplementedDataNodeServiceServer) testEmbeddedByValue()                         {}
@@ -166,6 +182,24 @@ func _DataNodeService_GetWorkerInfo_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataNodeService_DeleteBlock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteBlockRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataNodeServiceServer).DeleteBlock(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataNodeService_DeleteBlock_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataNodeServiceServer).DeleteBlock(ctx, req.(*DeleteBlockRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DataNodeService_ServiceDesc is the grpc.ServiceDesc for DataNodeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -176,6 +210,10 @@ var DataNodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetWorkerInfo",
 			Handler:    _DataNodeService_GetWorkerInfo_Handler,
+		},
+		{
+			MethodName: "DeleteBlock",
+			Handler:    _DataNodeService_DeleteBlock_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

@@ -32,7 +32,7 @@ func (s *HTTPServer) Start() {
 		Addr:         addr,
 		Handler:      mux,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 60 * time.Minute, 
+		WriteTimeout: 60 * time.Minute,
 	}
 
 	go func() {
@@ -43,7 +43,6 @@ func (s *HTTPServer) Start() {
 	}()
 }
 
-// Stop gracefully shuts down the server
 func (s *HTTPServer) Stop() {
 	if s.server != nil {
 		s.server.Close()
@@ -56,28 +55,21 @@ func (s *HTTPServer) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract block ID from path (e.g. /blocks/abc-123 -> abc-123)
 	blockID := strings.TrimPrefix(r.URL.Path, "/blocks/")
 	if blockID == "" {
 		http.Error(w, "Block ID required", http.StatusBadRequest)
 		return
 	}
 
-	// SECURITY: Prevent Path Traversal
-	// 1. Clean the path
 	cleanPath := filepath.Clean(blockID)
-	// 2. Reject if it contains ".." or starts with "/" or "\"
 	if strings.Contains(cleanPath, "..") || strings.HasPrefix(cleanPath, "/") || strings.HasPrefix(cleanPath, "\") {
 		log.Printf("Security Alert: Path traversal attempt detected: %s", blockID)
 		http.Error(w, "Invalid block ID", http.StatusForbidden)
 		return
 	}
 
-	// Construct full path
-	// The WorkerNode stores files with a .bin extension (see worker.go)
 	fullPath := filepath.Join(s.storageDir, cleanPath+".bin")
 
-	// SECURITY: Double check that the final path is still within storageDir
 	absStorageDir, _ := filepath.Abs(s.storageDir)
 	absFullPath, _ := filepath.Abs(fullPath)
 	if !strings.HasPrefix(absFullPath, absStorageDir) {
@@ -86,7 +78,6 @@ func (s *HTTPServer) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if file exists
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		http.Error(w, "Block not found", http.StatusNotFound)
 		return

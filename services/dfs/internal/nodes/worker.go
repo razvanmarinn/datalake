@@ -159,3 +159,21 @@ func (wn *WorkerNode) FetchBlock(req *datanodev1.FetchBlockRequest, stream datan
 
 	return nil
 }
+
+func (wn *WorkerNode) DeleteBlock(ctx context.Context, req *datanodev1.DeleteBlockRequest) (*datanodev1.DeleteBlockResponse, error) {
+	blockID := req.BlockId
+	filePath := filepath.Join(wn.StorageDir, fmt.Sprintf("%s.bin", blockID))
+
+	log.Printf("🗑️ Deleting Block %s", blockID)
+
+	if err := os.Remove(filePath); err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("Block %s not found during deletion (already deleted?)", blockID)
+			return &datanodev1.DeleteBlockResponse{Success: true, Message: "Block not found, assumed deleted"}, nil
+		}
+		log.Printf("Failed to delete block %s: %v", blockID, err)
+		return &datanodev1.DeleteBlockResponse{Success: false, Message: err.Error()}, err
+	}
+
+	return &datanodev1.DeleteBlockResponse{Success: true, Message: "Block deleted successfully"}, nil
+}

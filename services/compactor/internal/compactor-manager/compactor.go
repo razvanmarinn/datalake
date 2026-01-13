@@ -111,6 +111,7 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 		return fmt.Errorf("failed to create local temp dir: %w", err)
 	}
 	localOutPath := filepath.Join(compactedFolder, compactedFileName)
+	defer os.Remove(localOutPath)
 
 	// Define final status logic
 	var finalErr error
@@ -197,7 +198,6 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 
 	if filesProcessed == 0 {
 		fw.Close()
-		os.Remove(localOutPath)
 		finalErr = fmt.Errorf("compaction aborted: no input files could be read")
 		return finalErr
 	}
@@ -217,24 +217,35 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 	}
 
 	fmt.Printf("Uploading compacted file (%d bytes)...\n", fileInfo.Size())
-	newBlocks, err := c.uploadCompactedFile(ctx, localOutPath)
+	newBlocks, workerAddr, err := c.uploadCompactedFile(ctx, localOutPath)
 	if err != nil {
 		finalErr = err
 		return fmt.Errorf("failed to upload compacted file: %w", err)
 	}
 
 	// --- NEW: Register the new file in Catalog (Postgres) ---
-	fullCompactedPath := filepath.Join(schemaName, compactedFileName)
+	// Get real Worker ID
+	dfsClient, err := c.getDfsClient(workerAddr)
+	if err != nil {
+		finalErr = err
+		return fmt.Errorf("failed to get client for worker %s: %w", workerAddr, err)
+	}
 
-	// FIX: Use a valid UUID string
-	compactorWorkerUUID := uuid.New().String()
+	wInfo, err := dfsClient.GetWorkerInfo(ctx, &datanodev1.GetWorkerInfoRequest{})
+	if err != nil {
+		finalErr = err
+		return fmt.Errorf("failed to get worker info from %s: %w", workerAddr, err)
+	}
+	compactorWorkerUUID := wInfo.WorkerId
+
+	fullCompactedPath := filepath.Join(schemaName, compactedFileName)
 
 	for _, block := range newBlocks {
 		_, err := c.config.CatalogClient.RegisterDataFile(ctx, &catalogv1.RegisterDataFileRequest{
 			ProjectId:  projectID,
 			SchemaName: schemaName,
 			BlockId:    block.BlockId,
-			WorkerId:   compactorWorkerUUID, // <--- FIXED HERE
+			WorkerId:   compactorWorkerUUID,
 			FilePath:   fullCompactedPath,
 			FileSize:   block.Size,
 			FileFormat: "parquet",
@@ -263,7 +274,6 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 		return fmt.Errorf("failed to commit compaction: %w", err)
 	}
 
-	os.Remove(localOutPath)
 	log.Printf("✅ Compacted %d files into %s", filesProcessed, compactedFileName)
 	return nil
 }
@@ -313,23 +323,25 @@ func (c *Compactor) appendAvroToParquet(data []byte, pw *writer.JSONWriter) erro
 	return nil
 }
 
-func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string) ([]*commonv1.BlockInfo, error) {
+func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string) ([]*commonv1.BlockInfo, string, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer file.Close()
 
 	// Pick a DataNode to upload to.
 	c.cacheLock.Lock()
 	var client datanodev1.DataNodeServiceClient
+	var selectedAddr string
 	if len(c.activeDataNodes) > 0 {
-		client = c.dataNodeClientCache[c.activeDataNodes[0]]
+		selectedAddr = c.activeDataNodes[0]
+		client = c.dataNodeClientCache[selectedAddr]
 	}
 	c.cacheLock.Unlock()
 
 	if client == nil {
-		return nil, fmt.Errorf("no active data nodes available for upload")
+		return nil, "", fmt.Errorf("no active data nodes available for upload")
 	}
 
 	const blockSize = 128 * 1024 * 1024 // 128MB Blocks
@@ -341,7 +353,7 @@ func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string) (
 	for {
 		bytesRead, err := file.Read(buffer)
 		if err != nil && err != io.EOF {
-			return nil, err
+			return nil, "", err
 		}
 		if bytesRead == 0 {
 			break
@@ -351,7 +363,7 @@ func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string) (
 
 		stream, err := client.PushBlock(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create upload stream: %w", err)
+			return nil, "", fmt.Errorf("failed to create upload stream: %w", err)
 		}
 
 		metaReq := &datanodev1.PushBlockRequest{
@@ -363,7 +375,7 @@ func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string) (
 			},
 		}
 		if err := stream.Send(metaReq); err != nil {
-			return nil, fmt.Errorf("failed to send metadata for block %s: %w", newBlockID, err)
+			return nil, "", fmt.Errorf("failed to send metadata for block %s: %w", newBlockID, err)
 		}
 
 		currentBlockData := buffer[:bytesRead]
@@ -380,16 +392,16 @@ func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string) (
 			}
 
 			if err := stream.Send(chunkReq); err != nil {
-				return nil, fmt.Errorf("failed to send chunk for block %s: %w", newBlockID, err)
+				return nil, "", fmt.Errorf("failed to send chunk for block %s: %w", newBlockID, err)
 			}
 		}
 
 		resp, err := stream.CloseAndRecv()
 		if err != nil {
-			return nil, fmt.Errorf("datanode stream error for block %s: %w", newBlockID, err)
+			return nil, "", fmt.Errorf("datanode stream error for block %s: %w", newBlockID, err)
 		}
 		if !resp.Success {
-			return nil, fmt.Errorf("datanode rejected block %s: %s", newBlockID, resp.Message)
+			return nil, "", fmt.Errorf("datanode rejected block %s: %s", newBlockID, resp.Message)
 		}
 
 		blocks = append(blocks, &commonv1.BlockInfo{
@@ -398,5 +410,5 @@ func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string) (
 		})
 	}
 
-	return blocks, nil
+	return blocks, selectedAddr, nil
 }

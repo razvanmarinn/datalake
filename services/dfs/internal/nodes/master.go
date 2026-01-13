@@ -13,6 +13,7 @@ import (
 
 	commonv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/common/v1"
 	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
+	datanodev1 "github.com/razvanmarinn/datalake/protobuf/gen/go/datanode/v1"
 
 	"github.com/google/uuid"
 	"github.com/razvanmarinn/dfs/internal/load_balancer"
@@ -389,6 +390,40 @@ func (mn *MasterNode) CommitCompaction(req *coordinatorv1.CommitCompactionReques
 		if !exists {
 			log.Printf("Warning: Compaction tried to delete non-existent file: %s", path)
 			continue
+		}
+
+		// Delete physical blocks
+		for _, blockID := range inode.Blocks {
+			blockMeta, ok := mn.BlockMap[blockID]
+			if !ok {
+				continue
+			}
+
+			// Send DeleteBlock to all replicas
+			for _, replicaWorkerID := range blockMeta.Replicas {
+				client, _, _, _, err := mn.LoadBalancer.GetClientByWorkerID(replicaWorkerID.String())
+				if err != nil {
+					log.Printf("Error getting client for worker %s to delete block %s: %v", replicaWorkerID, blockID, err)
+					continue
+				}
+
+				// Call DeleteBlock
+				// Use a short timeout context to avoid blocking the master for too long
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				_, err = client.DeleteBlock(ctx, &datanodev1.DeleteBlockRequest{
+					BlockId: blockID.String(),
+				})
+				cancel()
+
+				if err != nil {
+					log.Printf("Failed to delete block %s on worker %s: %v", blockID, replicaWorkerID, err)
+				} else {
+					log.Printf("Physically deleted block %s on worker %s", blockID, replicaWorkerID)
+				}
+			}
+
+			// Clean up BlockMap
+			delete(mn.BlockMap, blockID)
 		}
 
 		delete(mn.Namespace, path)

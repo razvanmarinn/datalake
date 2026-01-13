@@ -32,6 +32,7 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 
 	h.logger.Info("Received SQL Query", zap.String("query", req.Query), zap.String("project", req.ProjectID))
 
+	// 1. Parse SQL
 	stmt, err := sqlparser.Parse(req.Query)
 	if err != nil {
 		h.logger.Error("Failed to parse SQL", zap.Error(err))
@@ -40,39 +41,47 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 	}
 
 	replacements := make(map[string]string)
-	err = sqlparser.Walk(func(node sqlparser.SQLNode) (bool, error) {
-		if table, ok := node.(*sqlparser.TableName); ok {
-			tableName := table.Name.String()
 
-			files, err := h.resolveFilesForTable(c.Request.Context(), req.ProjectID, tableName)
-			if err != nil {
-				return false, err
+	if selectStmt, ok := stmt.(*sqlparser.Select); ok {
+		h.logger.Info("Detected SELECT statement, inspecting FROM clause manually")
+		for _, fromExpr := range selectStmt.From {
+			if aliasedExpr, ok := fromExpr.(*sqlparser.AliasedTableExpr); ok {
+				switch t := aliasedExpr.Expr.(type) {
+				case sqlparser.TableName:
+					h.logger.Info("Found TableName (Value)", zap.String("table", t.Name.String()))
+
+					newT := &t
+					if err := h.rewriteTable(c.Request.Context(), req.ProjectID, newT, replacements); err != nil {
+						h.logger.Error("Rewrite failed", zap.Error(err))
+					}
+					aliasedExpr.Expr = *newT
+
+				case *sqlparser.TableName:
+					h.logger.Info("Found TableName (Pointer)", zap.String("table", t.Name.String()))
+					if err := h.rewriteTable(c.Request.Context(), req.ProjectID, t, replacements); err != nil {
+						h.logger.Error("Rewrite failed", zap.Error(err))
+					}
+				default:
+					h.logger.Info("Skipping FROM expression", zap.String("type", fmt.Sprintf("%T", aliasedExpr.Expr)))
+				}
 			}
-			if len(files) == 0 {
-				return false, fmt.Errorf("schema empty or not found: %s", tableName)
-			}
-
-			var fileUrls []string
-			for _, file := range files {
-				url := fmt.Sprintf("'http://localhost:8086/virtual?project=%s&file=%s'", req.ProjectID, file)
-				fileUrls = append(fileUrls, url)
-			}
-
-			placeholder := fmt.Sprintf("TOKEN_%s", tableName)
-			replacement := fmt.Sprintf("read_parquet([%s])", strings.Join(fileUrls, ", "))
-
-			replacements[placeholder] = replacement
-
-			table.Qualifier = sqlparser.NewTableIdent("")
-			table.Name = sqlparser.NewTableIdent(placeholder)
 		}
-		return true, nil
-	}, stmt)
-
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
 	}
+
+	if len(replacements) == 0 {
+		h.logger.Info("Manual inspection found nothing, trying Walk...")
+		_ = sqlparser.Walk(func(node sqlparser.SQLNode) (bool, error) {
+			h.logger.Info("Visiting Node", zap.String("type", fmt.Sprintf("%T", node)))
+
+			if table, ok := node.(*sqlparser.TableName); ok {
+				h.logger.Info("Walk found TableName (Pointer)", zap.String("table", table.Name.String()))
+				_ = h.rewriteTable(c.Request.Context(), req.ProjectID, table, replacements)
+			}
+			return true, nil
+		}, stmt)
+	}
+
+	h.logger.Info("Rewrite Complete", zap.Int("replacements_count", len(replacements)))
 
 	generatedSQL := sqlparser.String(stmt)
 
@@ -92,6 +101,12 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 	}
 	defer db.Close()
 
+	if _, err = db.ExecContext(c.Request.Context(), "INSTALL httpfs; LOAD httpfs;"); err != nil {
+		h.logger.Error("Failed to load httpfs", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialize DB extensions"})
+		return
+	}
+
 	rows, err := db.QueryContext(c.Request.Context(), generatedSQL)
 	if err != nil {
 		h.logger.Error("DuckDB Query Failed", zap.Error(err))
@@ -109,9 +124,7 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 		for i := range values {
 			valuePtrs[i] = &values[i]
 		}
-
 		rows.Scan(valuePtrs...)
-
 		rowMap := make(map[string]interface{})
 		for i, col := range columns {
 			val := values[i]
@@ -127,13 +140,60 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 	c.JSON(http.StatusOK, resultData)
 }
 
+func (h *QueryHandler) rewriteTable(ctx context.Context, projectID string, table *sqlparser.TableName, replacements map[string]string) error {
+	tableName := table.Name.String()
+
+	placeholder := fmt.Sprintf("TOKEN_%s", tableName)
+	if _, exists := replacements[placeholder]; exists {
+		return nil
+	}
+
+	h.logger.Info("Resolving files for table", zap.String("table", tableName))
+
+	files, err := h.resolveFilesForTable(ctx, projectID, tableName)
+	if err != nil {
+		h.logger.Error("Failed to resolve files", zap.Error(err))
+		return err
+	}
+
+	h.logger.Info("Resolved Files", zap.String("table", tableName), zap.Int("count", len(files)))
+
+	if len(files) == 0 {
+		return fmt.Errorf("schema empty or not found: %s", tableName)
+	}
+
+	var fileUrls []string
+	for _, file := range files {
+		url := fmt.Sprintf("'http://localhost:8086/virtual?project=%s&file=%s'", projectID, file)
+		fileUrls = append(fileUrls, url)
+	}
+
+	replacement := fmt.Sprintf("read_parquet([%s])", strings.Join(fileUrls, ", "))
+	replacements[placeholder] = replacement
+
+	// Mutate the AST
+	table.Qualifier = sqlparser.NewTableIdent("")
+	table.Name = sqlparser.NewTableIdent(placeholder)
+
+	return nil
+}
+
 func (h *QueryHandler) resolveFilesForTable(ctx context.Context, projectID, schema string) ([]string, error) {
-	prefix := fmt.Sprintf("%s/compacted", schema)
+	prefix := fmt.Sprintf("%s/", schema)
+
 	resp, err := h.MasterClient.ListFiles(ctx, projectID, prefix)
 	if err != nil {
 		return nil, err
 	}
-	return resp.FilePaths, nil
+
+	var compactedFiles []string
+	for _, file := range resp.FilePaths {
+		if strings.Contains(file, "compacted") && strings.HasSuffix(file, ".parquet") {
+			compactedFiles = append(compactedFiles, file)
+		}
+	}
+
+	return compactedFiles, nil
 }
 
 func (h *QueryHandler) VirtualFileHandler(c *gin.Context) {

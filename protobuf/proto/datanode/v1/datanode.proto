@@ -7,6 +7,7 @@ service DataNodeService {
     rpc PushBlock(stream PushBlockRequest) returns (PushBlockResponse);
     rpc FetchBlock(FetchBlockRequest) returns (stream FetchBlockResponse);
     rpc GetWorkerInfo(GetWorkerInfoRequest) returns (GetWorkerInfoResponse);
+    rpc DeleteBlock(DeleteBlockRequest) returns (DeleteBlockResponse);
 }
 
 message PushBlockRequest {
@@ -38,4 +39,13 @@ message GetWorkerInfoRequest {}
 message GetWorkerInfoResponse {
     string worker_id = 1;
     string address = 2; // Optional: helpful for verification
+}
+
+message DeleteBlockRequest {
+    string block_id = 1;
+}
+
+message DeleteBlockResponse {
+    bool success = 1;
+    string message = 2;
 }

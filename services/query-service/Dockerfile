@@ -1,23 +1,23 @@
-FROM golang:1.24.11 AS builder
+FROM golang:1.25-bookworm AS builder
 
 WORKDIR /app
-ARG GITHUB_PAT
-ENV GOPRIVATE=github.com/razvanmarinn/*
-ENV GOPROXY=https://proxy.golang.org,direct
 
-RUN git config --global url."https://${GITHUB_PAT}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+COPY go.mod go.sum ./
+RUN go mod download
+
 COPY . .
 
-RUN CGO_ENABLED=1 GOOS=linux go build -o query_service . && ls -l
-
+RUN CGO_ENABLED=1 GOOS=linux go build -o query_service .
 
 FROM debian:bookworm-slim
 
-WORKDIR /app
 RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/ .
 
-RUN chmod +x query_service
+WORKDIR /app
 
-EXPOSE 8080
+COPY --from=builder /app/query_service .
+
+EXPOSE 8086
+EXPOSE 50051
+
 CMD ["./query_service"]
