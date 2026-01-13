@@ -93,10 +93,12 @@ func main() {
 
 
 	r.GET("/query", queryHandler.GetData)
+	r.GET("/virtual", queryHandler.VirtualFileHandler) // Used internally by DuckDB
 
 	protected := r.Group("/")
 	protected.Use(middleware.AuthMiddleware())
 	{
+		protected.POST("/sql", queryHandler.RunSQL)
 		protected.GET("/get_file_list/:project", queryHandler.GetFileList)
 		protected.GET("/projects/:project/schemas/:schema/data", queryHandler.GetSchemaData)
 	}

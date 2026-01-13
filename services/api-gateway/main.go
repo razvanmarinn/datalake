@@ -83,6 +83,7 @@ func main() {
 
 	r.Any("/ingest/:project", reverse_proxy.StreamingIngestionProxy("http://streaming-ingestion:8080", logger))
 	r.Any("/schema_registry/:project/*path", reverse_proxy.MetadataServiceProxy("http://metadata-service:8080", logger))
+	r.Any("/query/*path", reverse_proxy.QueryServiceProxy("http://query-service:8086", logger))
 
 	srv := &http.Server{
 		Addr:    ":8080",

@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	defaultPort = 50051
-	storageDir  = "/data"
+	defaultPort     = 50051
+	defaultHTTPPort = 8080
+	storageDir      = "/data"
 )
 
 func main() {
@@ -38,6 +39,17 @@ func main() {
 			log.Fatalf("Invalid GRPC_PORT: %v", err)
 		}
 		port = p
+	}
+
+	httpPortStr := os.Getenv("HTTP_PORT")
+	httpPort := defaultHTTPPort
+	if httpPortStr != "" {
+		cleanPort := strings.TrimPrefix(httpPortStr, ":")
+		p, err := strconv.Atoi(cleanPort)
+		if err != nil {
+			log.Fatalf("Invalid HTTP_PORT: %v", err)
+		}
+		httpPort = p
 	}
 
 	listenAddr := ":" + strconv.Itoa(port)
@@ -58,6 +70,9 @@ func main() {
 	}
 
 	worker.Start()
+
+	httpServer := NewHTTPServer(storageDir, httpPort)
+	httpServer.Start()
 
 	lis, err := net.Listen("tcp", listenAddr)
 	if err != nil {
@@ -109,6 +124,7 @@ func main() {
 
 		grpcServer.GracefulStop()
 		worker.Stop()
+		httpServer.Stop()
 		log.Println("Worker node stopped")
 	}()
 

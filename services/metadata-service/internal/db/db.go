@@ -621,3 +621,28 @@ func GetUncompactedBlockIDs(db *sql.DB, projectID uuid.UUID, schemaID, limit int
 	}
 	return blockIDs, nil
 }
+func GetBlockIDsInPendingCompactionJobs(db *sql.DB, projectID uuid.UUID, schemaID int) (map[string]bool, error) {
+	query := `
+		SELECT unnest(target_block_ids)
+		FROM compaction_jobs
+		WHERE status = 'PENDING'
+          AND project_id = $1
+          AND schema_id = $2`
+
+	rows, err := db.Query(query, projectID, schemaID)
+	if err != nil {
+		return nil, fmt.Errorf("error querying pending compaction block IDs: %w", err)
+	}
+	defer rows.Close()
+
+	lockedBlocks := make(map[string]bool)
+	for rows.Next() {
+		var blockID string
+		if err := rows.Scan(&blockID); err != nil {
+			return nil, fmt.Errorf("error scanning block ID: %w", err)
+		}
+		lockedBlocks[blockID] = true
+	}
+
+	return lockedBlocks, nil
+}

@@ -39,6 +39,9 @@ spec:
   - port: 50051
     name: grpc
     targetPort: 50051
+  - port: 8080
+    name: http
+    targetPort: 8080
   clusterIP: None # Required for StatefulSets
   selector:
     app: worker
@@ -67,9 +70,13 @@ spec:
         ports:
         - containerPort: 50051
           name: grpc
+        - containerPort: 8080
+          name: http
         env:
         - name: GRPC_PORT
           value: ":50051"
+        - name: HTTP_PORT
+          value: ":8080"
         - name: HOSTNAME
           valueFrom:
             fieldRef:

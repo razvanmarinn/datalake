@@ -68,10 +68,11 @@ func main() {
 	projectName := resp.GetProjectName()
 	targetFiles := resp.GetTargetFiles()
 	targetPaths := resp.GetTargetPaths()
-
+	respGetProj, _ := metadataClient.GetProject(ctx, &catalogv1.GetProjectRequest{ProjectName: projectName})
+	ownerId := respGetProj.OwnerId
 	log.Printf("⚙️ Starting compaction for Job: %s (Project: %s, Schema: %s)", jobId, projectName, schemaName)
 
-	err = compactor.Compact(ctx, jobId, projectId, projectName, schemaName, targetFiles, targetPaths)
+	err = compactor.Compact(ctx, jobId, projectId, projectName, schemaName, targetFiles, targetPaths, ownerId)
 	if err != nil {
 		log.Printf("❌ Failed to compact %s/%s: %v", projectId, schemaName, err)
 	} else {

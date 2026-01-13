@@ -52,7 +52,6 @@ func NewCompactor(cfg Config) *Compactor {
 	}
 }
 
-// Helper: Connect to a DataNode and cache the connection
 func (c *Compactor) getDfsClient(addr string) (datanodev1.DataNodeServiceClient, error) {
 	c.cacheLock.Lock()
 	defer c.cacheLock.Unlock()
@@ -96,7 +95,7 @@ func (c *Compactor) FetchSchema(project, schemaName string) (*FetchSchemaRespons
 	}
 	return &schemaRes, nil
 }
-func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string, projectName string, schemaName string, targetFiles []string, targetPaths []string) error {
+func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string, projectName string, schemaName string, targetFiles []string, targetPaths []string, ownerId string) error {
 	fmt.Println("🚀 Starting compaction job:", jobID)
 	_, err := c.config.CatalogClient.UpdateJobStatus(ctx, &catalogv1.UpdateJobStatusRequest{
 		JobId:  jobID,
@@ -254,7 +253,7 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 			ProjectId:  projectID,
 			FilePath:   fullCompactedPath,
 			FileFormat: "parquet",
-			OwnerId:    "test-id",
+			OwnerId:    ownerId,
 			Blocks:     newBlocks,
 		},
 	})

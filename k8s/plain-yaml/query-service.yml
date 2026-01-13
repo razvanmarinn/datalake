@@ -10,7 +10,7 @@ spec:
     app.kubernetes.io/name: query-service
   ports:
     - name: http
-      port: 80
+      port: 8086
       targetPort: 8086
     - name: https
       port: 443

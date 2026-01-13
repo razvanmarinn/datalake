@@ -8,12 +8,13 @@ ENV GOPROXY=https://proxy.golang.org,direct
 RUN git config --global url."https://${GITHUB_PAT}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o query_service . && ls -l
+RUN CGO_ENABLED=1 GOOS=linux go build -o query_service . && ls -l
 
 
-FROM alpine:latest
+FROM debian:bookworm-slim
 
 WORKDIR /app
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/ .
 
 RUN chmod +x query_service

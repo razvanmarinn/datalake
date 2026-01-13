@@ -105,6 +105,42 @@ func MetadataServiceProxy(targetServiceURL string, logger *logging.Logger) gin.H
 	}
 }
 
+func QueryServiceProxy(targetServiceURL string, logger *logging.Logger) gin.HandlerFunc {
+	target, err := url.Parse(targetServiceURL)
+	if err != nil {
+		logger.Fatal("Invalid target URL for QueryServiceProxy", zap.Error(err))
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+
+	proxy.Director = func(req *http.Request) {
+		req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
+		req.URL.Scheme = target.Scheme
+		req.URL.Host = target.Host
+		req.Host = target.Host
+	}
+
+	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
+		logger.WithError(err).Info("Reverse proxy error for QueryService", zap.Error(err))
+		rw.WriteHeader(http.StatusBadGateway)
+	}
+
+	return func(c *gin.Context) {
+		userIDIfc, exists := c.Get("userID")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing userID in context"})
+			return
+		}
+		userID := userIDIfc.(string)
+		c.Request.Header.Set("X-User-ID", userID)
+
+		path := c.Param("path")
+		c.Request.URL.Path = path
+
+		logger.WithRequest(c).Info("Forwarding to Query Service", zap.String("path", path))
+		proxy.ServeHTTP(c.Writer, c.Request)
+	}
+}
+
 // user -> api gateway ( jwt token and req )
 //  req (/streaming-ingestion/project_name)
 //  if project_name exists
