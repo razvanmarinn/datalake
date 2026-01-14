@@ -86,14 +86,13 @@ func main() {
 	}
 	r.Use(cors.New(config))
 
-
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "UP"})
 	})
 
-
 	r.GET("/query", queryHandler.GetData)
 	r.GET("/virtual", queryHandler.VirtualFileHandler) // Used internally by DuckDB
+	r.HEAD("/virtual", queryHandler.VirtualFileHandler)
 
 	protected := r.Group("/")
 	protected.Use(middleware.AuthMiddleware())

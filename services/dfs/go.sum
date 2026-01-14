@@ -98,6 +98,8 @@ github.com/razvanmarinn/datalake v0.0.0-20260107154359-080f4f15f641 h1:j+BZdf4dY
 github.com/razvanmarinn/datalake v0.0.0-20260107154359-080f4f15f641/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
 github.com/razvanmarinn/datalake v0.0.0-20260109095626-6888cdf48716 h1:GpyuFSk4a63Hv/4vCOj4SHseF3UrZW2sBsJg8+8jOFs=
 github.com/razvanmarinn/datalake v0.0.0-20260109095626-6888cdf48716/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
+github.com/razvanmarinn/datalake v0.0.0-20260113230158-f263e5edea45 h1:ko/vaQgxBjnMl7Su3Ri/tWr1BLr6TmDiRxUoGq4+Adk=
+github.com/razvanmarinn/datalake v0.0.0-20260113230158-f263e5edea45/go.mod h1:RKtAzZJFD5IXCYlGmIx3yrG6AGdGp47P6IF1dCdnmsM=
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/spf13/pflag v1.0.9 h1:9exaQaMOCwffKiiiYk6/BndUBv+iRViNW+4lEMi0PvY=

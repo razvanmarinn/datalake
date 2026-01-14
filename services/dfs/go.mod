@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/razvanmarinn/datalake v0.0.0-20260109095626-6888cdf48716
+	github.com/razvanmarinn/datalake v0.0.0-20260113230158-f263e5edea45
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.72.2
 	k8s.io/apimachinery v0.35.0

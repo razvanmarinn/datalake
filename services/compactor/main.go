@@ -68,7 +68,18 @@ func main() {
 	projectName := resp.GetProjectName()
 	targetFiles := resp.GetTargetFiles()
 	targetPaths := resp.GetTargetPaths()
-	respGetProj, _ := metadataClient.GetProject(ctx, &catalogv1.GetProjectRequest{ProjectName: projectName})
+	log.Printf("Fetching owner for project: %s", projectName)
+	respGetProj, err := metadataClient.GetProject(ctx, &catalogv1.GetProjectRequest{ProjectName: projectName})
+	if err != nil {
+		log.Printf("❌ Failed to get project details: %v", err)
+		// Consider notifying the catalog that the job failed, or just exit to retry later
+		return
+	}
+	if respGetProj == nil {
+		log.Printf("❌ Project not found: %s", projectName)
+		return
+	}
+
 	ownerId := respGetProj.OwnerId
 	log.Printf("⚙️ Starting compaction for Job: %s (Project: %s, Schema: %s)", jobId, projectName, schemaName)
 

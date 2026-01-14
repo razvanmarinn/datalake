@@ -621,11 +621,13 @@ func GetUncompactedBlockIDs(db *sql.DB, projectID uuid.UUID, schemaID, limit int
 	}
 	return blockIDs, nil
 }
+
 func GetBlockIDsInPendingCompactionJobs(db *sql.DB, projectID uuid.UUID, schemaID int) (map[string]bool, error) {
+	// FIX: Added 'RUNNING' to status check to catch actively processing jobs
 	query := `
 		SELECT unnest(target_block_ids)
 		FROM compaction_jobs
-		WHERE status = 'PENDING'
+		WHERE status IN ('PENDING', 'RUNNING')
           AND project_id = $1
           AND schema_id = $2`
 

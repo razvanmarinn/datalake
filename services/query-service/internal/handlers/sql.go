@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -42,6 +43,7 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 
 	replacements := make(map[string]string)
 
+	// APPROACH A: Manual Inspection (Restored for reliability)
 	if selectStmt, ok := stmt.(*sqlparser.Select); ok {
 		h.logger.Info("Detected SELECT statement, inspecting FROM clause manually")
 		for _, fromExpr := range selectStmt.From {
@@ -49,39 +51,31 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 				switch t := aliasedExpr.Expr.(type) {
 				case sqlparser.TableName:
 					h.logger.Info("Found TableName (Value)", zap.String("table", t.Name.String()))
-
 					newT := &t
 					if err := h.rewriteTable(c.Request.Context(), req.ProjectID, newT, replacements); err != nil {
-						h.logger.Error("Rewrite failed", zap.Error(err))
+						c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+						return
 					}
 					aliasedExpr.Expr = *newT
 
 				case *sqlparser.TableName:
 					h.logger.Info("Found TableName (Pointer)", zap.String("table", t.Name.String()))
 					if err := h.rewriteTable(c.Request.Context(), req.ProjectID, t, replacements); err != nil {
-						h.logger.Error("Rewrite failed", zap.Error(err))
+						c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+						return
 					}
-				default:
-					h.logger.Info("Skipping FROM expression", zap.String("type", fmt.Sprintf("%T", aliasedExpr.Expr)))
 				}
 			}
 		}
-	}
-
-	if len(replacements) == 0 {
-		h.logger.Info("Manual inspection found nothing, trying Walk...")
+	} else {
+		// APPROACH B: Fallback Walk for non-SELECT queries
 		_ = sqlparser.Walk(func(node sqlparser.SQLNode) (bool, error) {
-			h.logger.Info("Visiting Node", zap.String("type", fmt.Sprintf("%T", node)))
-
 			if table, ok := node.(*sqlparser.TableName); ok {
-				h.logger.Info("Walk found TableName (Pointer)", zap.String("table", table.Name.String()))
 				_ = h.rewriteTable(c.Request.Context(), req.ProjectID, table, replacements)
 			}
 			return true, nil
 		}, stmt)
 	}
-
-	h.logger.Info("Rewrite Complete", zap.Int("replacements_count", len(replacements)))
 
 	generatedSQL := sqlparser.String(stmt)
 
@@ -101,8 +95,9 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 	}
 	defer db.Close()
 
+	// FIX: Only install HTTPFS. Do NOT install 'avro' to prevent 404 crash on ARM64.
 	if _, err = db.ExecContext(c.Request.Context(), "INSTALL httpfs; LOAD httpfs;"); err != nil {
-		h.logger.Error("Failed to load httpfs", zap.Error(err))
+		h.logger.Error("Failed to load extensions", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialize DB extensions"})
 		return
 	}
@@ -142,36 +137,39 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 
 func (h *QueryHandler) rewriteTable(ctx context.Context, projectID string, table *sqlparser.TableName, replacements map[string]string) error {
 	tableName := table.Name.String()
-
 	placeholder := fmt.Sprintf("TOKEN_%s", tableName)
+
 	if _, exists := replacements[placeholder]; exists {
 		return nil
 	}
 
-	h.logger.Info("Resolving files for table", zap.String("table", tableName))
-
 	files, err := h.resolveFilesForTable(ctx, projectID, tableName)
 	if err != nil {
-		h.logger.Error("Failed to resolve files", zap.Error(err))
 		return err
 	}
-
-	h.logger.Info("Resolved Files", zap.String("table", tableName), zap.Int("count", len(files)))
-
 	if len(files) == 0 {
 		return fmt.Errorf("schema empty or not found: %s", tableName)
 	}
 
-	var fileUrls []string
+	var parquetUrls []string
+
 	for _, file := range files {
-		url := fmt.Sprintf("'http://localhost:8086/virtual?project=%s&file=%s'", projectID, file)
-		fileUrls = append(fileUrls, url)
+		// Only supporting Parquet for now to stabilize the service
+		if strings.HasSuffix(file, ".parquet") {
+			url := fmt.Sprintf("'http://localhost:8086/virtual?project=%s&file=%s'", projectID, file)
+			parquetUrls = append(parquetUrls, url)
+		} else if strings.HasSuffix(file, ".avro") {
+			h.logger.Warn("Skipping Avro file (Avro extension disabled)", zap.String("file", file))
+		}
 	}
 
-	replacement := fmt.Sprintf("read_parquet([%s])", strings.Join(fileUrls, ", "))
+	if len(parquetUrls) == 0 {
+		return fmt.Errorf("no parquet files found for table %s (avro temporarily disabled)", tableName)
+	}
+
+	replacement := fmt.Sprintf("read_parquet([%s])", strings.Join(parquetUrls, ", "))
 	replacements[placeholder] = replacement
 
-	// Mutate the AST
 	table.Qualifier = sqlparser.NewTableIdent("")
 	table.Name = sqlparser.NewTableIdent(placeholder)
 
@@ -180,22 +178,14 @@ func (h *QueryHandler) rewriteTable(ctx context.Context, projectID string, table
 
 func (h *QueryHandler) resolveFilesForTable(ctx context.Context, projectID, schema string) ([]string, error) {
 	prefix := fmt.Sprintf("%s/", schema)
-
 	resp, err := h.MasterClient.ListFiles(ctx, projectID, prefix)
 	if err != nil {
 		return nil, err
 	}
-
-	var compactedFiles []string
-	for _, file := range resp.FilePaths {
-		if strings.Contains(file, "compacted") && strings.HasSuffix(file, ".parquet") {
-			compactedFiles = append(compactedFiles, file)
-		}
-	}
-
-	return compactedFiles, nil
+	return resp.FilePaths, nil
 }
 
+// VirtualFileHandler proxies file chunks to appear as a single file
 func (h *QueryHandler) VirtualFileHandler(c *gin.Context) {
 	projectID := c.Query("project")
 	filePath := c.Query("file")
@@ -205,10 +195,16 @@ func (h *QueryHandler) VirtualFileHandler(c *gin.Context) {
 		return
 	}
 
-	// 1. Get Metadata
-	metadata, err := h.MasterClient.GetFileMetadata(c.Request.Context(), projectID, filePath)
+	fullPath := filepath.Join(projectID, filePath)
+
+	metadata, err := h.MasterClient.GetFileMetadata(c.Request.Context(), projectID, fullPath)
 	if err != nil {
-		h.logger.Error("VirtualProxy: Metadata failed", zap.Error(err))
+		// Log the specific error from Master for debugging
+		h.logger.Error("VirtualProxy: Metadata failed",
+			zap.String("full_path", fullPath),
+			zap.Error(err))
+
+		// Return 404 if Master says file not found
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}

@@ -39,6 +39,7 @@ func (s *CompactionScheduler) Start() {
 		}
 	}()
 }
+
 func (s *CompactionScheduler) createCompactionJobs() {
 	stats, err := db.GetUncompactedFileStats(s.DB)
 	if err != nil {
@@ -51,9 +52,20 @@ func (s *CompactionScheduler) createCompactionJobs() {
 			continue
 		}
 
+		// Check for blocks that are already in PENDING or RUNNING jobs
 		pendingBlocksMap, err := db.GetBlockIDsInPendingCompactionJobs(s.DB, stat.ProjectID, stat.SchemaID)
 		if err != nil {
 			s.Logger.Error("Failed to fetch pending jobs", zap.String("project", stat.ProjectID.String()), zap.Error(err))
+			continue
+		}
+
+		// FIX: Schema Lock
+		// If ANY blocks in this schema are currently being compacted (Pending or Running),
+		// we skip this cycle to avoid race conditions.
+		if len(pendingBlocksMap) > 0 {
+			s.Logger.Info("Skipping compaction for schema: active job already running",
+				zap.String("project", stat.ProjectID.String()),
+				zap.Int("schema", stat.SchemaID))
 			continue
 		}
 
@@ -65,10 +77,11 @@ func (s *CompactionScheduler) createCompactionJobs() {
 
 		var validBlockIDs []string
 		for _, blockID := range candidates {
-			if !pendingBlocksMap[blockID] { // Only checks against THIS project's pending list
+			if !pendingBlocksMap[blockID] {
 				validBlockIDs = append(validBlockIDs, blockID)
 			}
 		}
+
 		if len(validBlockIDs) >= COMPACTION_THRESHOLD {
 			if len(validBlockIDs) > COMPACTION_THRESHOLD {
 				validBlockIDs = validBlockIDs[:COMPACTION_THRESHOLD]

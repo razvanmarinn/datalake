@@ -62,7 +62,7 @@ func (s *HTTPServer) handleDownload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cleanPath := filepath.Clean(blockID)
-	if strings.Contains(cleanPath, "..") || strings.HasPrefix(cleanPath, "/") || strings.HasPrefix(cleanPath, "\") {
+	if strings.Contains(cleanPath, "..") || strings.HasPrefix(cleanPath, "/") || strings.HasPrefix(cleanPath, "\\") {
 		log.Printf("Security Alert: Path traversal attempt detected: %s", blockID)
 		http.Error(w, "Invalid block ID", http.StatusForbidden)
 		return

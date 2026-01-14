@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/linkedin/goavro/v2"
 
 	// Proto imports
@@ -40,15 +39,12 @@ type Compactor struct {
 	config              Config
 	dataNodeClientCache map[string]datanodev1.DataNodeServiceClient
 	cacheLock           sync.Mutex
-	// We keep track of active addresses to pick one for upload later
-	activeDataNodes []string
 }
 
 func NewCompactor(cfg Config) *Compactor {
 	return &Compactor{
 		config:              cfg,
 		dataNodeClientCache: make(map[string]datanodev1.DataNodeServiceClient),
-		activeDataNodes:     make([]string, 0),
 	}
 }
 
@@ -68,7 +64,6 @@ func (c *Compactor) getDfsClient(addr string) (datanodev1.DataNodeServiceClient,
 
 	client := datanodev1.NewDataNodeServiceClient(conn)
 	c.dataNodeClientCache[addr] = client
-	c.activeDataNodes = append(c.activeDataNodes, addr) // Track this node as available
 	return client, nil
 }
 
@@ -95,6 +90,7 @@ func (c *Compactor) FetchSchema(project, schemaName string) (*FetchSchemaRespons
 	}
 	return &schemaRes, nil
 }
+
 func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string, projectName string, schemaName string, targetFiles []string, targetPaths []string, ownerId string) error {
 	fmt.Println("🚀 Starting compaction job:", jobID)
 	_, err := c.config.CatalogClient.UpdateJobStatus(ctx, &catalogv1.UpdateJobStatusRequest{
@@ -106,11 +102,15 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 	}
 
 	compactedFileName := fmt.Sprintf("compacted-%d.parquet", time.Now().Unix())
+
+	// Ensure we create a local temp folder
 	compactedFolder := filepath.Join(c.config.StorageRoot, projectID, schemaName, "compacted")
 	if err := os.MkdirAll(compactedFolder, 0755); err != nil {
 		return fmt.Errorf("failed to create local temp dir: %w", err)
 	}
 	localOutPath := filepath.Join(compactedFolder, compactedFileName)
+
+	// FIX: Clean up local file when done
 	defer os.Remove(localOutPath)
 
 	// Define final status logic
@@ -126,7 +126,8 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 			Status: status,
 		}
 		if status == "COMPLETED" {
-			req.ResultFilePath = filepath.Join(schemaName, compactedFileName)
+			// FIX: Path Logic Mismatch (Master checks filepath.Rel, so this needs to be correct)
+			req.ResultFilePath = filepath.Join(schemaName, "compacted", compactedFileName)
 		}
 
 		c.config.CatalogClient.UpdateJobStatus(context.Background(), req)
@@ -138,6 +139,9 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 		finalErr = err
 		return err
 	}
+
+	// Debug logging for schema issues
+	log.Printf("📥 Using Parquet Schema: %s", schemas.ParquetSchema)
 
 	// Init Parquet Writer
 	fw, err := local.NewLocalFileWriter(localOutPath)
@@ -217,37 +221,29 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 	}
 
 	fmt.Printf("Uploading compacted file (%d bytes)...\n", fileInfo.Size())
-	newBlocks, workerAddr, err := c.uploadCompactedFile(ctx, localOutPath)
+
+	// FIX: Use new upload method that calls AllocateBlock
+	uploadedBlocks, err := c.uploadCompactedFile(ctx, localOutPath, projectID)
 	if err != nil {
 		finalErr = err
 		return fmt.Errorf("failed to upload compacted file: %w", err)
 	}
 
-	// --- NEW: Register the new file in Catalog (Postgres) ---
-	// Get real Worker ID
-	dfsClient, err := c.getDfsClient(workerAddr)
-	if err != nil {
-		finalErr = err
-		return fmt.Errorf("failed to get client for worker %s: %w", workerAddr, err)
-	}
+	// Construct logical path including Project ID so Master Rel() works
+	fullCompactedPath := filepath.Join(projectID, schemaName, "compacted", compactedFileName)
 
-	wInfo, err := dfsClient.GetWorkerInfo(ctx, &datanodev1.GetWorkerInfoRequest{})
-	if err != nil {
-		finalErr = err
-		return fmt.Errorf("failed to get worker info from %s: %w", workerAddr, err)
-	}
-	compactorWorkerUUID := wInfo.WorkerId
+	var protoBlocks []*commonv1.BlockInfo
 
-	fullCompactedPath := filepath.Join(schemaName, compactedFileName)
+	for _, upload := range uploadedBlocks {
+		protoBlocks = append(protoBlocks, upload.BlockInfo)
 
-	for _, block := range newBlocks {
 		_, err := c.config.CatalogClient.RegisterDataFile(ctx, &catalogv1.RegisterDataFileRequest{
 			ProjectId:  projectID,
 			SchemaName: schemaName,
-			BlockId:    block.BlockId,
-			WorkerId:   compactorWorkerUUID,
+			BlockId:    upload.BlockInfo.BlockId,
+			WorkerId:   upload.WorkerID, // <--- Correct Worker ID from Allocation
 			FilePath:   fullCompactedPath,
-			FileSize:   block.Size,
+			FileSize:   upload.BlockInfo.Size,
 			FileFormat: "parquet",
 		})
 		if err != nil {
@@ -265,7 +261,7 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 			FilePath:   fullCompactedPath,
 			FileFormat: "parquet",
 			OwnerId:    ownerId,
-			Blocks:     newBlocks,
+			Blocks:     protoBlocks,
 		},
 	})
 
@@ -323,59 +319,74 @@ func (c *Compactor) appendAvroToParquet(data []byte, pw *writer.JSONWriter) erro
 	return nil
 }
 
-func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string) ([]*commonv1.BlockInfo, string, error) {
+// Helper struct to track which worker got which block
+type BlockUploadResult struct {
+	BlockInfo *commonv1.BlockInfo
+	WorkerID  string
+}
+
+// FIX: New implementation using Master Allocation logic
+func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string, projectID string) ([]BlockUploadResult, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	defer file.Close()
-
-	// Pick a DataNode to upload to.
-	c.cacheLock.Lock()
-	var client datanodev1.DataNodeServiceClient
-	var selectedAddr string
-	if len(c.activeDataNodes) > 0 {
-		selectedAddr = c.activeDataNodes[0]
-		client = c.dataNodeClientCache[selectedAddr]
-	}
-	c.cacheLock.Unlock()
-
-	if client == nil {
-		return nil, "", fmt.Errorf("no active data nodes available for upload")
-	}
 
 	const blockSize = 128 * 1024 * 1024 // 128MB Blocks
 	const streamChunkSize = 64 * 1024   // 64KB Network Chunks
 
 	buffer := make([]byte, blockSize)
-	var blocks []*commonv1.BlockInfo
+	var results []BlockUploadResult
 
 	for {
 		bytesRead, err := file.Read(buffer)
 		if err != nil && err != io.EOF {
-			return nil, "", err
+			return nil, err
 		}
 		if bytesRead == 0 {
 			break
 		}
 
-		newBlockID := uuid.New().String()
+		// 1. Ask Master to Allocate Block (Registers it in Master's memory!)
+		allocReq := &coordinatorv1.AllocateBlockRequest{
+			ProjectId: projectID,
+			SizeBytes: int64(bytesRead),
+		}
 
+		allocResp, err := c.config.MasterClient.AllocateBlock(ctx, allocReq)
+		if err != nil {
+			return nil, fmt.Errorf("master allocation failed: %w", err)
+		}
+
+		if len(allocResp.TargetDatanodes) == 0 {
+			return nil, fmt.Errorf("master returned no target datanodes")
+		}
+
+		targetNode := allocResp.TargetDatanodes[0] // Primary replica
+
+		// 2. Connect to the ASSIGNED worker
+		client, err := c.getDfsClient(targetNode.Address)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to assigned worker %s: %w", targetNode.Address, err)
+		}
+
+		// 3. Push Block
 		stream, err := client.PushBlock(ctx)
 		if err != nil {
-			return nil, "", fmt.Errorf("failed to create upload stream: %w", err)
+			return nil, fmt.Errorf("failed to create upload stream: %w", err)
 		}
 
 		metaReq := &datanodev1.PushBlockRequest{
 			Data: &datanodev1.PushBlockRequest_Metadata{
 				Metadata: &datanodev1.BlockMetadata{
-					BlockId:   newBlockID,
+					BlockId:   allocResp.BlockId, // Use the ID Master gave us
 					TotalSize: int64(bytesRead),
 				},
 			},
 		}
 		if err := stream.Send(metaReq); err != nil {
-			return nil, "", fmt.Errorf("failed to send metadata for block %s: %w", newBlockID, err)
+			return nil, fmt.Errorf("failed to send metadata for block %s: %w", allocResp.BlockId, err)
 		}
 
 		currentBlockData := buffer[:bytesRead]
@@ -392,23 +403,27 @@ func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string) (
 			}
 
 			if err := stream.Send(chunkReq); err != nil {
-				return nil, "", fmt.Errorf("failed to send chunk for block %s: %w", newBlockID, err)
+				return nil, fmt.Errorf("failed to send chunk for block %s: %w", allocResp.BlockId, err)
 			}
 		}
 
 		resp, err := stream.CloseAndRecv()
 		if err != nil {
-			return nil, "", fmt.Errorf("datanode stream error for block %s: %w", newBlockID, err)
+			return nil, fmt.Errorf("datanode stream error for block %s: %w", allocResp.BlockId, err)
 		}
 		if !resp.Success {
-			return nil, "", fmt.Errorf("datanode rejected block %s: %s", newBlockID, resp.Message)
+			return nil, fmt.Errorf("datanode rejected block %s: %s", allocResp.BlockId, resp.Message)
 		}
 
-		blocks = append(blocks, &commonv1.BlockInfo{
-			BlockId: newBlockID,
-			Size:    int64(bytesRead),
+		// 4. Record Result
+		results = append(results, BlockUploadResult{
+			BlockInfo: &commonv1.BlockInfo{
+				BlockId: allocResp.BlockId,
+				Size:    int64(bytesRead),
+			},
+			WorkerID: targetNode.WorkerId, // The Worker ID returned by Master
 		})
 	}
 
-	return blocks, selectedAddr, nil
+	return results, nil
 }
