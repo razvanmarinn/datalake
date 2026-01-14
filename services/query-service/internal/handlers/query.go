@@ -28,25 +28,20 @@ func (m *MemoryFile) Create(name string) (source.ParquetFile, error) {
 	return nil, fmt.Errorf("read only")
 }
 func (m *MemoryFile) Close() error { return nil }
-
-// FIX: Add the missing Write method to satisfy the interface
 func (m *MemoryFile) Write(p []byte) (n int, err error) {
 	return 0, fmt.Errorf("read only: write not supported")
 }
 
-// QueryHandler is a handler for the query service.
 type QueryHandler struct {
 	logger       *zap.Logger
 	MasterClient *grpc.MasterClient
 
-	// Cache for DataNode clients to avoid re-dialing constantly
 	dataNodeClientsMu sync.Mutex
 	dataNodeClients   map[string]*grpc.DataNodeClient
 
 	QueryCounter metric.Int64Counter
 }
 
-// NewQueryHandler creates a new QueryHandler.
 func NewQueryHandler(logger *zap.Logger, masterClient *grpc.MasterClient, queryCounter metric.Int64Counter) *QueryHandler {
 	return &QueryHandler{
 		logger:          logger,
@@ -76,19 +71,16 @@ func (h *QueryHandler) getDataNodeClient(address string) (*grpc.DataNodeClient, 
 }
 
 func (h *QueryHandler) GetFileList(c *gin.Context) {
-	// 1. Get Project ID
 	projectID := c.Param("project")
 	if projectID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "missing project parameter"})
 		return
 	}
 
-	// 2. Optional: Directory Prefix
 	prefix := c.Query("prefix")
 
 	h.logger.Info("Attempting ListFiles RPC", zap.String("ProjectID", projectID))
 
-	// 3. Call Coordinator
 	resp, err := h.MasterClient.ListFiles(c.Request.Context(), projectID, prefix)
 	if err != nil {
 		h.logger.Error("MasterClient RPC Failed", zap.Error(err))
@@ -102,7 +94,7 @@ func (h *QueryHandler) GetFileList(c *gin.Context) {
 func (h *QueryHandler) GetData(c *gin.Context) {
 	h.QueryCounter.Add(c.Request.Context(), 1)
 
-	projectID := c.Param("project") // Assuming route is /:project/data
+	projectID := c.Param("project")
 	fileName := c.Query("file_name")
 
 	if projectID == "" || fileName == "" {
@@ -112,7 +104,6 @@ func (h *QueryHandler) GetData(c *gin.Context) {
 
 	h.logger.Info("Received request for file", zap.String("project", projectID), zap.String("file", fileName))
 
-	// 2. Get Metadata from Coordinator
 	metadata, err := h.MasterClient.GetFileMetadata(c.Request.Context(), projectID, fileName)
 	if err != nil {
 		h.logger.Error("Failed to get metadata", zap.Error(err))
@@ -125,7 +116,6 @@ func (h *QueryHandler) GetData(c *gin.Context) {
 	for _, blockInfo := range metadata.Blocks {
 		blockID := blockInfo.BlockId
 
-		// Find location for this block
 		location, ok := metadata.Locations[blockID]
 		if !ok {
 			h.logger.Error("No location found for block", zap.String("block_id", blockID))
@@ -133,10 +123,7 @@ func (h *QueryHandler) GetData(c *gin.Context) {
 			return
 		}
 
-		// Construct Worker Address
 		workerAddr := location.Address
-
-		// Get Client
 		client, err := h.getDataNodeClient(workerAddr)
 		if err != nil {
 			h.logger.Error("Failed to connect to datanode", zap.String("addr", workerAddr), zap.Error(err))
@@ -144,7 +131,6 @@ func (h *QueryHandler) GetData(c *gin.Context) {
 			return
 		}
 
-		// Fetch Data
 		h.logger.Debug("Fetching block", zap.String("block_id", blockID), zap.String("worker", workerAddr))
 		blockData, err := client.FetchBlock(c.Request.Context(), blockID)
 		if err != nil {
@@ -195,15 +181,12 @@ func (h *QueryHandler) GetSchemaData(c *gin.Context) {
 
 		fullPath := filepath.Join(projectID, fileName)
 
-		// 2. Get Metadata
 		metadata, err := h.MasterClient.GetFileMetadata(c.Request.Context(), projectID, fullPath)
 		if err != nil {
-			// This often happens if the file was recently compacted/deleted
 			h.logger.Warn("Skipping file due to metadata error (possibly compacted)", zap.String("file", fullPath), zap.Error(err))
 			continue
 		}
 
-		// 3. Assemble File
 		var fileBuffer bytes.Buffer
 		for _, blockInfo := range metadata.Blocks {
 			location, ok := metadata.Locations[blockInfo.BlockId]
@@ -236,7 +219,6 @@ func (h *QueryHandler) GetSchemaData(c *gin.Context) {
 		if strings.HasSuffix(fileName, ".parquet") {
 			records, parseErr = parseParquetBytes(fileBuffer.Bytes())
 		} else {
-			// Default to Avro
 			records, parseErr = parseAvroOCF(fileBuffer.Bytes())
 		}
 
@@ -253,12 +235,6 @@ func (h *QueryHandler) GetSchemaData(c *gin.Context) {
 		zap.Int("total_records", len(tableData)),
 	)
 	c.JSON(http.StatusOK, tableData)
-}
-
-func isStackPartOfSchema(filename string, schema string) bool {
-	prefixDir := fmt.Sprintf("%s/", schema)
-	prefixFile := fmt.Sprintf("%s_", schema)
-	return strings.HasPrefix(filename, prefixDir) || strings.HasPrefix(filename, prefixFile)
 }
 
 func parseAvroOCF(data []byte) ([]interface{}, error) {

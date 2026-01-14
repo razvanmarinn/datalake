@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/marcboeker/go-duckdb"
@@ -95,7 +97,6 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 	}
 	defer db.Close()
 
-	// FIX: Only install HTTPFS. Do NOT install 'avro' to prevent 404 crash on ARM64.
 	if _, err = db.ExecContext(c.Request.Context(), "INSTALL httpfs; LOAD httpfs;"); err != nil {
 		h.logger.Error("Failed to load extensions", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to initialize DB extensions"})
@@ -156,6 +157,7 @@ func (h *QueryHandler) rewriteTable(ctx context.Context, projectID string, table
 	for _, file := range files {
 		// Only supporting Parquet for now to stabilize the service
 		if strings.HasSuffix(file, ".parquet") {
+			// Ensure this URL matches your main.go route
 			url := fmt.Sprintf("'http://localhost:8086/virtual?project=%s&file=%s'", projectID, file)
 			parquetUrls = append(parquetUrls, url)
 		} else if strings.HasSuffix(file, ".avro") {
@@ -167,6 +169,11 @@ func (h *QueryHandler) rewriteTable(ctx context.Context, projectID string, table
 		return fmt.Errorf("no parquet files found for table %s (avro temporarily disabled)", tableName)
 	}
 
+	// Logging count to confirm we found all 30+ files
+	h.logger.Info("Generating read_parquet statement",
+		zap.String("table", tableName),
+		zap.Int("file_count", len(parquetUrls)))
+
 	replacement := fmt.Sprintf("read_parquet([%s])", strings.Join(parquetUrls, ", "))
 	replacements[placeholder] = replacement
 
@@ -176,55 +183,63 @@ func (h *QueryHandler) rewriteTable(ctx context.Context, projectID string, table
 	return nil
 }
 
+// resolveFilesForTable now searches for both directory-style (schema/file) and flat-style (schema_file)
 func (h *QueryHandler) resolveFilesForTable(ctx context.Context, projectID, schema string) ([]string, error) {
-	prefix := fmt.Sprintf("%s/", schema)
+	// FIX: Use the schema name directly as prefix to catch "schema/" AND "schema_"
+	prefix := schema
+
 	resp, err := h.MasterClient.ListFiles(ctx, projectID, prefix)
 	if err != nil {
 		return nil, err
 	}
-	return resp.FilePaths, nil
+
+	// Filter the results to ensure they strictly belong to this schema
+	var validFiles []string
+	for _, f := range resp.FilePaths {
+		if isStackPartOfSchema(f, schema) {
+			validFiles = append(validFiles, f)
+		}
+	}
+
+	return validFiles, nil
 }
 
-// VirtualFileHandler proxies file chunks to appear as a single file
+// Helper to determine if a file belongs to a schema (handles both directory and flat naming)
+func isStackPartOfSchema(filename string, schema string) bool {
+	prefixDir := fmt.Sprintf("%s/", schema)  // Matches "hhh/compacted/..."
+	prefixFile := fmt.Sprintf("%s_", schema) // Matches "hhh_compacted_..."
+	return strings.HasPrefix(filename, prefixDir) || strings.HasPrefix(filename, prefixFile)
+}
+
+// VirtualFileHandler serves files to DuckDB using http.ServeContent to support Range requests.
 func (h *QueryHandler) VirtualFileHandler(c *gin.Context) {
 	projectID := c.Query("project")
-	filePath := c.Query("file")
+	filePath := c.Query("file") // DuckDB sends this as 'file'
 
 	if projectID == "" || filePath == "" {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 
+	// Adjust path logic to match how MasterClient expects it
 	fullPath := filepath.Join(projectID, filePath)
+	if strings.HasPrefix(filePath, projectID+"/") {
+		fullPath = filePath
+	}
 
 	metadata, err := h.MasterClient.GetFileMetadata(c.Request.Context(), projectID, fullPath)
 	if err != nil {
-		// Log the specific error from Master for debugging
 		h.logger.Error("VirtualProxy: Metadata failed",
 			zap.String("full_path", fullPath),
 			zap.Error(err))
-
-		// Return 404 if Master says file not found
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
 
-	if len(metadata.Blocks) == 1 {
-		block := metadata.Blocks[0]
-		loc := metadata.Locations[block.BlockId]
-
-		parts := strings.Split(loc.Address, ":")
-		if len(parts) >= 1 {
-			host := parts[0]
-			httpURL := fmt.Sprintf("http://%s:8080/blocks/%s", host, block.BlockId)
-			h.logger.Debug("Redirecting to worker", zap.String("url", httpURL))
-			c.Redirect(http.StatusTemporaryRedirect, httpURL)
-			return
-		}
-	}
-
-	c.Header("Content-Type", "application/octet-stream")
-
+	// 1. Buffer the full file.
+	// We need a Seekable reader for ServeContent, so we must download the blocks first.
+	// Optimization TODO: Parse Range header manually to only fetch specific blocks.
+	var fileBuffer bytes.Buffer
 	for _, block := range metadata.Blocks {
 		loc, ok := metadata.Locations[block.BlockId]
 		if !ok {
@@ -245,8 +260,9 @@ func (h *QueryHandler) VirtualFileHandler(c *gin.Context) {
 			return
 		}
 
-		if _, err := c.Writer.Write(data); err != nil {
-			return
-		}
+		fileBuffer.Write(data)
 	}
+
+	readSeeker := bytes.NewReader(fileBuffer.Bytes())
+	http.ServeContent(c.Writer, c.Request, filePath, time.Now(), readSeeker)
 }

@@ -19,7 +19,6 @@ func main() {
 		storageRoot = "./data"
 	}
 
-	// --- 1. Connect to Metadata Service ---
 	metadataServiceAddr := os.Getenv("METADATA_SERVICE_ADDR")
 	if metadataServiceAddr == "" {
 		metadataServiceAddr = "metadata-service:50055"
@@ -60,33 +59,33 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to get compaction job: %v", err)
 	}
+	for _, job := range resp.Jobs {
+		jobId := job.GetJobId()
+		schemaName := job.GetSchemaName()
+		projectId := job.GetProjectId()
+		projectName := job.GetProjectName()
+		targetFiles := job.GetTargetFiles()
+		targetPaths := job.GetTargetPaths()
+		log.Printf("Fetching owner for project: %s", projectName)
+		respGetProj, err := metadataClient.GetProject(ctx, &catalogv1.GetProjectRequest{ProjectName: projectName})
+		if err != nil {
+			log.Printf("❌ Failed to get project details: %v", err)
+			return
+		}
+		if respGetProj == nil {
+			log.Printf("❌ Project not found: %s", projectName)
+			return
+		}
 
-	// Extract details
-	jobId := resp.GetJobId()
-	schemaName := resp.GetSchemaName()
-	projectId := resp.GetProjectId()
-	projectName := resp.GetProjectName()
-	targetFiles := resp.GetTargetFiles()
-	targetPaths := resp.GetTargetPaths()
-	log.Printf("Fetching owner for project: %s", projectName)
-	respGetProj, err := metadataClient.GetProject(ctx, &catalogv1.GetProjectRequest{ProjectName: projectName})
-	if err != nil {
-		log.Printf("❌ Failed to get project details: %v", err)
-		// Consider notifying the catalog that the job failed, or just exit to retry later
-		return
-	}
-	if respGetProj == nil {
-		log.Printf("❌ Project not found: %s", projectName)
-		return
+		ownerId := respGetProj.OwnerId
+		log.Printf("⚙️ Starting compaction for Job: %s (Project: %s, Schema: %s)", jobId, projectName, schemaName)
+
+		err = compactor.Compact(ctx, jobId, projectId, projectName, schemaName, targetFiles, targetPaths, ownerId)
+		if err != nil {
+			log.Printf("❌ Failed to compact %s/%s: %v", projectId, schemaName, err)
+		} else {
+			log.Println("✅ Compaction cycle finished.")
+		}
 	}
 
-	ownerId := respGetProj.OwnerId
-	log.Printf("⚙️ Starting compaction for Job: %s (Project: %s, Schema: %s)", jobId, projectName, schemaName)
-
-	err = compactor.Compact(ctx, jobId, projectId, projectName, schemaName, targetFiles, targetPaths, ownerId)
-	if err != nil {
-		log.Printf("❌ Failed to compact %s/%s: %v", projectId, schemaName, err)
-	} else {
-		log.Println("✅ Compaction cycle finished.")
-	}
 }

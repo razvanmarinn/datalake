@@ -10,7 +10,9 @@ import (
 )
 
 const (
-	COMPACTION_THRESHOLD = 3 // Number of uncompacted files to trigger a job
+	COMPACTION_THRESHOLD = 3
+	MAX_FILES_PER_JOB    = 50
+	FETCH_LIMIT          = 5000
 )
 
 type CompactionScheduler struct {
@@ -52,50 +54,50 @@ func (s *CompactionScheduler) createCompactionJobs() {
 			continue
 		}
 
-		// Check for blocks that are already in PENDING or RUNNING jobs
 		pendingBlocksMap, err := db.GetBlockIDsInPendingCompactionJobs(s.DB, stat.ProjectID, stat.SchemaID)
 		if err != nil {
 			s.Logger.Error("Failed to fetch pending jobs", zap.String("project", stat.ProjectID.String()), zap.Error(err))
 			continue
 		}
 
-		// FIX: Schema Lock
-		// If ANY blocks in this schema are currently being compacted (Pending or Running),
-		// we skip this cycle to avoid race conditions.
-		if len(pendingBlocksMap) > 0 {
-			s.Logger.Info("Skipping compaction for schema: active job already running",
-				zap.String("project", stat.ProjectID.String()),
-				zap.Int("schema", stat.SchemaID))
-			continue
-		}
-
-		candidates, err := db.GetUncompactedBlockIDs(s.DB, stat.ProjectID, stat.SchemaID, COMPACTION_THRESHOLD+20)
+		candidates, err := db.GetUncompactedBlockIDs(s.DB, stat.ProjectID, stat.SchemaID, FETCH_LIMIT)
 		if err != nil {
 			s.Logger.Error("Failed to get uncompacted block IDs", zap.Error(err))
 			continue
 		}
 
-		var validBlockIDs []string
+		var freeBlockIDs []string
 		for _, blockID := range candidates {
 			if !pendingBlocksMap[blockID] {
-				validBlockIDs = append(validBlockIDs, blockID)
+				freeBlockIDs = append(freeBlockIDs, blockID)
 			}
 		}
 
-		if len(validBlockIDs) >= COMPACTION_THRESHOLD {
-			if len(validBlockIDs) > COMPACTION_THRESHOLD {
-				validBlockIDs = validBlockIDs[:COMPACTION_THRESHOLD]
+		jobsCreated := 0
+		for i := 0; i < len(freeBlockIDs); i += MAX_FILES_PER_JOB {
+			end := i + MAX_FILES_PER_JOB
+			if end > len(freeBlockIDs) {
+				end = len(freeBlockIDs)
 			}
 
-			_, err := db.CreateCompactionJob(s.DB, stat.ProjectID, stat.SchemaID, validBlockIDs)
-			if err != nil {
-				s.Logger.Error("Failed to create compaction job", zap.Error(err))
-				continue
-			}
+			batch := freeBlockIDs[i:end]
 
-			s.Logger.Info("Created compaction job",
+			if len(batch) >= COMPACTION_THRESHOLD {
+				_, err := db.CreateCompactionJob(s.DB, stat.ProjectID, stat.SchemaID, batch)
+				if err != nil {
+					s.Logger.Error("Failed to create compaction job batch", zap.Error(err))
+					continue // Try the next batch even if this one failed
+				}
+				jobsCreated++
+			}
+		}
+
+		if jobsCreated > 0 {
+			s.Logger.Info("Scheduled compaction jobs",
 				zap.String("project", stat.ProjectID.String()),
-				zap.Int("schema", stat.SchemaID))
+				zap.Int("schema", stat.SchemaID),
+				zap.Int("jobs_created", jobsCreated),
+				zap.Int("total_files_scheduled", len(freeBlockIDs)))
 		}
 	}
 }

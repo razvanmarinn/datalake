@@ -1,11 +1,12 @@
 #!/bin/bash
-
-  minikube delete
+rm -rf /Users/marinrazvan/Developer/datalake/datalake_data
+mkdir /Users/marinrazvan/Developer/datalake/datalake_data
+minikube delete
 minikube start --mount --mount-string="/Users/marinrazvan/Developer/datalake/datalake_data:/datalake/data" --memory 8192
 
   eval $(minikube docker-env)
-    
-    
+
+
   kubectl create ns observability
   kubectl create ns kafka
   kubectl create ns argocd
@@ -80,3 +81,14 @@ else
     echo "--- Direct kubectl apply setup complete! ---"
 fi
 
+alias log-qs='kubectl logs -l app.kubernetes.io/name=query-service -n datalake -f'
+alias log-ag='kubectl logs -l app.kubernetes.io/name=api-gateway -n datalake -f'
+alias log-id='kubectl logs -l app=identity-service -n datalake -f'
+alias log-meta='kubectl logs -l app=metadata-service -n datalake -f'
+alias log-master='kubectl logs -l app=master -n datalake -f'
+alias log-worker='kubectl logs -l app=worker -n datalake -f'
+alias log-cons='kubectl logs -l app=ingestion-consumer -n datalake -f'
+alias log-si='kubectl logs -l app=streaming-ingestion -n datalake -f'
+alias log-comp='kubectl logs -l app=compactor -n datalake -f'
+alias log-kafka='kubectl logs -l strimzi.io/cluster=my-kafka-cluster -n kafka -f'
+source setup_env.sh

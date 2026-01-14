@@ -456,8 +456,7 @@ func CreateCompactionJob(db *sql.DB, projectID uuid.UUID, schemaID int, targetBl
 	}
 	return job, nil
 }
-
-func PollPendingCompactionJob(db *sql.DB) (*models.CompactionJob, error) {
+func PollPendingCompactionJobs(db *sql.DB) ([]*models.CompactionJob, error) {
 	query := `
 		SELECT
 			j.id,
@@ -474,63 +473,76 @@ func PollPendingCompactionJob(db *sql.DB) (*models.CompactionJob, error) {
 		JOIN project p ON j.project_id = p.id
 		WHERE j.status = 'PENDING'
 		ORDER BY j.created_at ASC
-		LIMIT 1
 		FOR UPDATE SKIP LOCKED
 	`
-	row := db.QueryRow(query)
 
-	job := &models.CompactionJob{}
-	var targetBlockIDs []sql.NullString
-
-	err := row.Scan(
-		&job.ID,
-		&job.ProjectID,
-		&job.ProjectName,
-		&job.SchemaID,
-		&job.SchemaName,
-		&job.Status,
-		pq.Array(&targetBlockIDs),
-		&job.CreatedAt,
-		&job.UpdatedAt,
-	)
-
+	rows, err := db.Query(query)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to poll jobs: %w", err)
 	}
+	defer rows.Close()
 
-	job.TargetBlockIDs = make([]string, 0, len(targetBlockIDs))
-	for _, s := range targetBlockIDs {
-		if s.Valid {
-			job.TargetBlockIDs = append(job.TargetBlockIDs, s.String)
+	var jobs []*models.CompactionJob
+
+	for rows.Next() {
+		job := &models.CompactionJob{}
+		var targetBlockIDs []sql.NullString
+
+		err := rows.Scan(
+			&job.ID,
+			&job.ProjectID,
+			&job.ProjectName,
+			&job.SchemaID,
+			&job.SchemaName,
+			&job.Status,
+			pq.Array(&targetBlockIDs),
+			&job.CreatedAt,
+			&job.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan job: %w", err)
 		}
+
+		job.TargetBlockIDs = make([]string, 0, len(targetBlockIDs))
+		for _, s := range targetBlockIDs {
+			if s.Valid {
+				job.TargetBlockIDs = append(job.TargetBlockIDs, s.String)
+			}
+		}
+
+		jobs = append(jobs, job)
 	}
 
-	if len(job.TargetBlockIDs) > 0 {
-		pathQuery := `
-			SELECT path
-			FROM data_files
-			WHERE block_id = ANY($1)
-		`
-		rows, err := db.Query(pathQuery, pq.Array(job.TargetBlockIDs))
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating jobs: %w", err)
+	}
+
+	pathQuery := `SELECT path FROM data_files WHERE block_id = ANY($1)`
+
+	for _, job := range jobs {
+		if len(job.TargetBlockIDs) == 0 {
+			continue
+		}
+
+		pRows, err := db.Query(pathQuery, pq.Array(job.TargetBlockIDs))
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve paths for job %s: %w", job.ID, err)
 		}
-		defer rows.Close()
 
-		var paths []string
-		for rows.Next() {
-			var p string
-			if err := rows.Scan(&p); err != nil {
-				return nil, fmt.Errorf("error scanning path: %w", err)
+		func() {
+			defer pRows.Close()
+			var paths []string
+			for pRows.Next() {
+				var p string
+				if err := pRows.Scan(&p); err == nil {
+					paths = append(paths, p)
+				}
 			}
-			paths = append(paths, p)
-		}
-
-		// Ensure you add this field to your model!
-		job.TargetPaths = paths
+			job.TargetPaths = paths
+		}()
 	}
 
-	return job, nil
+	return jobs, nil
 }
 func UpdateCompactionJobStatus(db *sql.DB, jobID uuid.UUID, status, outputFilePath string) error {
 	tx, err := db.Begin()

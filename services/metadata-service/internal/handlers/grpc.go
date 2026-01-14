@@ -47,26 +47,28 @@ func (s *GRPCServer) GetProject(ctx context.Context, req *catalogv1.GetProjectRe
 func (s *GRPCServer) PollCompactionJobs(ctx context.Context, req *catalogv1.PollCompactionJobsRequest) (*catalogv1.PollCompactionJobsResponse, error) {
 	s.Logger.Info("Polling for compaction jobs")
 
-	job, err := db.PollPendingCompactionJob(s.DB)
+	dbJobs, err := db.PollPendingCompactionJobs(s.DB)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return &catalogv1.PollCompactionJobsResponse{}, nil
-		}
-		s.Logger.Error("Failed to poll compaction job", zap.Error(err))
-		return nil, fmt.Errorf("failed to fetch job: %w", err)
+		s.Logger.Error("Failed to poll compaction jobs", zap.Error(err))
+		return nil, fmt.Errorf("failed to fetch jobs: %w", err)
 	}
-	schema, err := db.GetSchemaByID(s.DB, job.SchemaID)
-	if err != nil {
-		s.Logger.Error("Failed to fetch schema", zap.Error(err))
-		return nil, fmt.Errorf("failed to fetch schema: %w", err)
+
+	grpcJobs := make([]*catalogv1.PollCompactionJob, 0, len(dbJobs))
+
+	for _, job := range dbJobs {
+
+		grpcJobs = append(grpcJobs, &catalogv1.PollCompactionJob{
+			JobId:       job.ID.String(),
+			ProjectId:   job.ProjectID.String(),
+			ProjectName: job.ProjectName,
+			SchemaName:  job.SchemaName,
+			TargetFiles: job.TargetBlockIDs,
+			TargetPaths: job.TargetPaths,
+		})
 	}
+
 	return &catalogv1.PollCompactionJobsResponse{
-		JobId:       job.ID.String(),
-		ProjectId:   job.ProjectID.String(),
-		ProjectName: job.ProjectName,
-		SchemaName:  schema.Name,
-		TargetFiles: job.TargetBlockIDs,
-		TargetPaths: job.TargetPaths,
+		Jobs: grpcJobs,
 	}, nil
 }
 
