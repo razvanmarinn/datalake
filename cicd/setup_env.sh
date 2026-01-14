@@ -91,4 +91,3 @@ alias log-cons='kubectl logs -l app=ingestion-consumer -n datalake -f'
 alias log-si='kubectl logs -l app=streaming-ingestion -n datalake -f'
 alias log-comp='kubectl logs -l app=compactor -n datalake -f'
 alias log-kafka='kubectl logs -l strimzi.io/cluster=my-kafka-cluster -n kafka -f'
-source setup_env.sh

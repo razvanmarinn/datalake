@@ -136,7 +136,8 @@ func GetProjectUUIDByProjectName(db *sql.DB, projectName string) (uuid.UUID, err
 }
 
 func GetProjects(db *sql.DB, owner_id string) (map[string]uuid.UUID, error) {
-	query := `SELECT name, owner_id FROM project WHERE owner_id = $1`
+	query := `SELECT id, name FROM project WHERE owner_id = $1`
+
 	rows, err := db.Query(query, owner_id)
 	if err != nil {
 		return nil, fmt.Errorf("error querying projects: %v", err)
@@ -145,16 +146,20 @@ func GetProjects(db *sql.DB, owner_id string) (map[string]uuid.UUID, error) {
 
 	projects := make(map[string]uuid.UUID)
 	for rows.Next() {
-		var name, idStr string
-		if err := rows.Scan(&name, &idStr); err != nil {
+		var idStr, name string
+
+		if err := rows.Scan(&idStr, &name); err != nil {
 			return nil, fmt.Errorf("error scanning project: %v", err)
 		}
+
 		id, err := uuid.Parse(idStr)
 		if err != nil {
-			return nil, fmt.Errorf("invalid UUID: %v", err)
+			return nil, fmt.Errorf("invalid UUID for project %s: %v", name, err)
 		}
+
 		projects[name] = id
 	}
+
 	return projects, nil
 }
 

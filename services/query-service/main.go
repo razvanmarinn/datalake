@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	middleware "github.com/razvanmarinn/datalake/pkg/jwt/middleware"
 	i_grpc "github.com/razvanmarinn/query_service/internal/grpc"
@@ -77,14 +76,6 @@ func main() {
 	r := gin.New()
 	r.Use(gin.Recovery())
 	r.Use(otelgin.Middleware("query-service"))
-
-	config := cors.Config{
-		AllowOrigins:     []string{"http://localhost:3001"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Content-Type", "Authorization"},
-		AllowCredentials: true,
-	}
-	r.Use(cors.New(config))
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "UP"})
