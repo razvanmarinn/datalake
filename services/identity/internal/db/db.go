@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"github.com/razvanmarinn/identity-service/internal/db/models"
+	"golang.org/x/crypto/bcrypt"
 
 	_ "github.com/lib/pq"
 )
@@ -103,7 +104,13 @@ func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
 
 func RegisterUser(db *sql.DB, user *models.Client) error {
 	query := `INSERT INTO users (username, email, password) VALUES ($1, $2, $3)`
-	_, err := db.Exec(query, user.Username, user.Email, user.Password)
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	_, err = db.Exec(query, user.Username, user.Email, string(hashedPassword))
 	if err != nil {
 		return fmt.Errorf("error inserting user: %v", err)
 	}

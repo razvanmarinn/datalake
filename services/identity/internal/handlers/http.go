@@ -11,6 +11,7 @@ import (
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"github.com/razvanmarinn/identity-service/internal/db"
 	"github.com/razvanmarinn/identity-service/internal/db/models"
+	"golang.org/x/crypto/bcrypt"
 
 	"go.uber.org/zap"
 )
@@ -65,7 +66,11 @@ func SetupRouter(database *sql.DB, logger *logging.Logger) *gin.Engine {
 		}
 		user, err := db.GetUser(database, loginBody.Username)
 		if err != nil {
-			logger.WithRequest(c).Error("Failed to get user", zap.Error(err))
+			logger.WithRequest(c).Error("Failed to get user and doing a dummy bcrypt comparation", zap.Error(err))
+			bcrypt.CompareHashAndPassword(
+				[]byte("$2a$10$abcdefghijklmnopqrstuvwxy"),
+				[]byte(loginBody.Password),
+			)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get user"})
 			return
 		}
@@ -74,7 +79,8 @@ func SetupRouter(database *sql.DB, logger *logging.Logger) *gin.Engine {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 			return
 		}
-		if user.Password != loginBody.Password {
+		err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(loginBody.Password))
+		if err != nil {
 			logger.LogUserLogin(loginBody.Username, false)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid username or password"})
 			return
