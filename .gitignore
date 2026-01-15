@@ -1,5 +1,24 @@
-/k8s/kafka/data/
-/datalake_data/
-*.json
+# Binaries
+/bin
+/dist
+*.bin
+
+# IDEs
+.idea/
+.vscode/
+
+# OS
 .DS_Store
-status.txt
+
+# Logs
+*.log
+/datalake_data/
+# Vendor
+/vendor
+
+# Temporary files
+tmp/
+temp/
+
+# Secrets
+pkg/jwt/manager/certs/*.pem
