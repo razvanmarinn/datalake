@@ -2,8 +2,9 @@ package manager
 
 import (
 	"context"
-	_ "embed"
+	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/MicahParks/keyfunc/v3"
@@ -18,12 +19,20 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-//go:embed certs/private.pem
-var embeddedPrivateKey []byte
 var keyId string = "19c92999ceb1b952d80c6f90"
 
 func CreateToken(username string) (string, error) {
-	secretKey, err := jwt.ParseRSAPrivateKeyFromPEM(embeddedPrivateKey)
+	path := os.Getenv("JWT_PRIVATE_KEY_PATH")
+	if path == "" {
+		path = "pkg/jwt/manager/certs/private.pem"
+	}
+
+	keyBytes, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("failed to read private key from %s: %w", path, err)
+	}
+
+	secretKey, err := jwt.ParseRSAPrivateKeyFromPEM(keyBytes)
 	if err != nil {
 		return "", err
 	}

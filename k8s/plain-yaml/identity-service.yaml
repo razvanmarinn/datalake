@@ -20,6 +20,17 @@ spec:
           ports:
             - containerPort: 8082
             - containerPort: 50056
+          env:
+            - name: JWT_PRIVATE_KEY_PATH
+              value: "/etc/certs/private.pem"
+          volumeMounts:
+            - name: jwt-secrets-vol
+              mountPath: "/etc/certs"
+              readOnly: true
+      volumes:
+        - name: jwt-secrets-vol
+          secret:
+            secretName: jwt-secrets
 ---
 apiVersion: v1
 kind: Service
@@ -36,16 +47,6 @@ spec:
       targetPort: 50056
   selector:
     app: identity-service
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: identity-postgres-secret
-  namespace: datalake
-type: Opaque
-data:
-  postgres-password: aWRlbnRpdHlwYXNzd29yZA== # base64 for "identitypassword"
-  postgres-user: aWRlbnRpdHl1c2Vy # base64 for "identityuser"
 ---
 apiVersion: v1
 kind: PersistentVolume

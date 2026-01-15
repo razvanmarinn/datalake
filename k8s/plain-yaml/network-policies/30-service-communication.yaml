@@ -1,0 +1,129 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-identity-traffic
+  namespace: datalake
+spec:
+  podSelector:
+    matchLabels:
+      app: identity-service
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: api-gateway
+    - podSelector:
+        matchLabels:
+          app: metadata-service
+    ports:
+    - protocol: TCP
+      port: 8082
+    - protocol: TCP
+      port: 50056
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-metadata-traffic
+  namespace: datalake
+spec:
+  podSelector:
+    matchLabels:
+      app: metadata-service
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: api-gateway
+    - podSelector:
+        matchLabels:
+          app: ingestion-consumer
+    ports:
+    - protocol: TCP
+      port: 8081
+    - protocol: TCP
+      port: 50056
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-query-traffic
+  namespace: datalake
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: query-service
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: api-gateway
+    ports:
+    - protocol: TCP
+      port: 8086
+    - protocol: TCP
+      port: 50051
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-master-traffic
+  namespace: datalake
+spec:
+  podSelector:
+    matchLabels:
+      app: master
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: query-service
+    - podSelector:
+        matchLabels:
+          app: worker
+    - podSelector:
+        matchLabels:
+          app: ingestion-consumer
+    ports:
+    - protocol: TCP
+      port: 50055
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-worker-traffic
+  namespace: datalake
+spec:
+  podSelector:
+    matchLabels:
+      app: worker
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: query-service
+    - podSelector:
+        matchLabels:
+          app: master
+    - podSelector:
+        matchLabels:
+          app: worker
+    ports:
+    - protocol: TCP
+      port: 50051
+    - protocol: TCP
+      port: 8080

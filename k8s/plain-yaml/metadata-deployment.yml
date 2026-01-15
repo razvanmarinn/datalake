@@ -27,17 +27,6 @@ spec:
   storageClassName: standard
   volumeName: metadata-postgres-pv
 ---
-# --- Database Secrets ---
-apiVersion: v1
-kind: Secret
-metadata:
-  name: metadata-postgres-secret
-  namespace: datalake
-type: Opaque
-data:
-  postgres-password: aWRlbnRpdHlwYXNzd29yZA== # metadatapassword
-  postgres-user: aWRlbnRpdHl1c2Vy # metadatauser
----
 # --- Database Deployment ---
 apiVersion: apps/v1
 kind: Deployment
