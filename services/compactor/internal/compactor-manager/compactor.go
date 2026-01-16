@@ -57,7 +57,7 @@ func (c *Compactor) getDfsClient(addr string) (datanodev1.DataNodeServiceClient,
 	}
 
 	// addr should be "IP:Port"
-	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to DFS worker at %s: %w", addr, err)
 	}
@@ -130,7 +130,7 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 			req.ResultFilePath = filepath.Join(schemaName, "compacted", compactedFileName)
 		}
 
-		c.config.CatalogClient.UpdateJobStatus(context.Background(), req)
+		_, _ = c.config.CatalogClient.UpdateJobStatus(context.Background(), req)
 	}()
 
 	// Fetch Schema

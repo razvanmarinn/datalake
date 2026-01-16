@@ -13,7 +13,7 @@ const Login = () => {
     setError(null);
     try {
       // TODO: Use environment variable for API URL
-      const response = await axios.post("http://localhost:8082/login/", {
+      const response = await axios.post("http://localhost:8083/auth/login/", {
         username,
         password,
       });

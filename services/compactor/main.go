@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
-	compactormanager "github.com/razvanmarinn/datalake/compactor/internal/compactor-manager"
 	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
 	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
+	compactormanager "github.com/razvanmarinn/datalake/services/compactor/internal/compactor-manager"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -24,7 +24,7 @@ func main() {
 		metadataServiceAddr = "metadata-service:50055"
 	}
 
-	metaConn, err := grpc.Dial(metadataServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	metaConn, err := grpc.NewClient(metadataServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Failed to connect to metadata service: %v", err)
 	}
@@ -36,7 +36,7 @@ func main() {
 	if masterServiceAddr == "" {
 		masterServiceAddr = "master.datalake.svc.cluster.local:50055"
 	}
-	masterConn, err := grpc.Dial(masterServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	masterConn, err := grpc.NewClient(masterServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Failed to connect to master service: %v", err)
 	}

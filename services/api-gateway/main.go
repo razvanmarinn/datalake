@@ -88,11 +88,21 @@ func main() {
 
 	r.Use(otelgin.Middleware("api-gateway"))
 	r.Use(gatewayMetrics.PrometheusMiddleware())
-	r.Use(middleware.AuthMiddleware())
 
-	r.Any("/ingest/:project", reverse_proxy.StreamingIngestionProxy("http://streaming-ingestion:8080", logger))
-	r.Any("/schema_registry/:project/*path", reverse_proxy.MetadataServiceProxy("http://metadata-service:8080", logger))
-	r.Any("/query/*path", reverse_proxy.QueryServiceProxy("http://query-service:8086", logger))
+	// Public routes (Identity Service for Login/Register)
+	public := r.Group("/auth")
+
+	public.Any("/*path", reverse_proxy.GenericProxy("http://identity-service:8082", logger, "/auth"))
+
+	// Authenticated routes
+	auth := r.Group("/")
+	auth.Use(middleware.AuthMiddleware())
+	{
+		auth.Any("/ingest/:project", reverse_proxy.StreamingIngestionProxy("http://streaming-ingestion:8080", logger))
+		auth.Any("/schema_registry/:project/*path", reverse_proxy.MetadataServiceProxy("http://metadata-service:8080", logger))
+		auth.Any("/query/*path", reverse_proxy.QueryServiceProxy("http://query-service:8086", logger))
+		auth.Any("/meta/*path", reverse_proxy.GenericProxy("http://metadata-service:8081", logger, "/meta"))
+	}
 
 	srv := &http.Server{
 		Addr:    ":8080",

@@ -40,8 +40,8 @@ spec:
     spec:
       containers:
         - name: query-service
-          image: razvan1y/query-service:latest
-          imagePullPolicy: Always
+          image: datalake/query-service
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8086
             - containerPort: 8443

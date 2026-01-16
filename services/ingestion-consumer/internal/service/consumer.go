@@ -80,7 +80,7 @@ func (app *App) fetchSchema(ctx context.Context, projectId, key string) (*batche
     url := fmt.Sprintf(
         "http://%s/%s/schema/%s",
         app.Config.SchemaRegistryHost,
-        projectId, 
+        projectId,
         key,
     )
 

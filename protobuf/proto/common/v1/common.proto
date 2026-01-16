@@ -5,12 +5,12 @@ option go_package = "github.com/razvanmarinn/datalake/protobuf/gen/go/common/v1;
 
 message BlockLocation {
     string block_id = 1;
-    string worker_id = 2; 
-    string address = 3;  
+    string worker_id = 2;
+    string address = 3;
 }
 
 message BlockInfo {
     string block_id = 1;
     int64 size = 2;
-    int64 checksum = 3; 
+    int64 checksum = 3;
 }

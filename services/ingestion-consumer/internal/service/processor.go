@@ -182,7 +182,7 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
         ProjectId:   projectId,
         SchemaName:  key,
         BlockId:     blockId,
-        WorkerId:    target.WorkerId, 
+        WorkerId:    target.WorkerId,
         FilePath:    fileName,
         FileSize:    dataSize,
         FileFormat:  "avro",

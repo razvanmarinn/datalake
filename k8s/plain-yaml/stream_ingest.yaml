@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: streaming-ingestion
-          image: razvan1y/streaming-ingestion:latest
-          imagePullPolicy: Always
+          image: datalake/streaming-ingestion
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080
           env:

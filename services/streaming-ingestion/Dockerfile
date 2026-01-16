@@ -3,8 +3,8 @@ WORKDIR /app
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o streaming_ingestion . 
-RUN ls -l 
+RUN CGO_ENABLED=0 GOOS=linux go build -o streaming_ingestion .
+RUN ls -l
 
 FROM alpine:latest
 

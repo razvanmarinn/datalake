@@ -1,0 +1,88 @@
+apiVersion: skaffold/v4beta7
+kind: Config
+metadata:
+  name: datalake-stack
+
+build:
+  artifacts:
+    # --- 1. Special Cases (Multiple Dockerfiles in one folder) ---
+    - image: datalake/dfs-master
+      context: services/dfs
+      docker:
+        dockerfile: Dockerfile.master
+
+    - image: datalake/dfs-worker
+      context: services/dfs
+      docker:
+        dockerfile: Dockerfile.worker
+
+    # --- 2. Standard Services ---
+    - image: datalake/ingestion-consumer
+      context: services/ingestion-consumer
+      docker:
+        dockerfile: Dockerfile
+
+    - image: datalake/api-gateway
+      context: services/api-gateway
+      docker:
+        dockerfile: Dockerfile
+
+    - image: datalake/identity-service
+      context: services/identity
+      docker:
+        dockerfile: Dockerfile
+
+    - image: datalake/metadata-service
+      context: services/metadata-service
+      docker:
+        dockerfile: Dockerfile
+
+    - image: datalake/streaming-ingestion
+      context: services/streaming-ingestion
+      docker:
+        dockerfile: Dockerfile
+
+    - image: datalake/query-service
+      context: services/query-service
+      docker:
+        dockerfile: Dockerfile
+
+    - image: datalake/compactor
+      context: .
+      docker:
+        dockerfile: services/compactor/Dockerfile
+
+manifests:
+  rawYaml:
+    - k8s/plain-yaml/*.yaml
+    - k8s/plain-yaml/network-policies/*.yaml
+
+deploy:
+  kubectl: {} # This just tells Skaffold "Use kubectl to deploy the manifests found above"
+
+portForward:
+  - resourceType: service
+    resourceName: api-gateway
+    namespace: datalake
+    port: 80
+    localPort: 8083
+  - resourceType: service
+    resourceName: identity-service
+    namespace: datalake
+    port: 8082
+    localPort: 8082
+  - resourceType: service
+    resourceName: metadata-service
+    namespace: datalake
+    port: 8081
+    localPort: 8081
+  - resourceType: service
+    resourceName: grafana
+    namespace: observability
+    port: 3000
+    localPort: 3000
+  - resourceType: service
+    resourceName: prometheus
+    namespace: observability
+    port: 9090
+    localPort: 9090

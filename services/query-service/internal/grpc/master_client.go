@@ -53,7 +53,7 @@ func (c *MasterClient) Close() {
 // GetFileMetadata calls the GetFileMetadata RPC.
 func (c *MasterClient) GetFileMetadata(ctx context.Context, projectID, filePath string) (*coordinatorv1.GetFileMetadataResponse, error) {
 	log.Printf("Querying coordinator for metadata: project=%s file=%s", projectID, filePath)
-	
+
 	req := &coordinatorv1.GetFileMetadataRequest{
 		ProjectId: projectID,
 		FilePath:  filePath,

@@ -14,17 +14,17 @@ spec:
             app: compactor
         spec:
           containers:
-          - name: compactor
-            image: razvan1y/compactor:latest
-            imagePullPolicy: Always
-            env:
-              - name: STORAGE_ROOT
-                value: "/data"
-              - name: SCHEMA_API_URL
-                value: "http://metadata-service.datalake.svc.cluster.local:8080"
-            volumeMounts:
-              - name: dfs-storage
-                mountPath: /data
+            - name: compactor
+              image: datalake/compactor
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: STORAGE_ROOT
+                  value: "/data"
+                - name: SCHEMA_API_URL
+                  value: "http://metadata-service.datalake.svc.cluster.local:8080"
+              volumeMounts:
+                - name: dfs-storage
+                  mountPath: /data
           restartPolicy: OnFailure
           volumes:
             - name: dfs-storage

@@ -25,7 +25,7 @@ spec:
     listeners:
       - name: plain
         port: 9092
-        type: cluster-ip     
+        type: cluster-ip
         tls: false
         configuration:
           useServiceDnsDomain: true

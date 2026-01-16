@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/razvanmarinn/datalake/pkg/logging"
-	
+
 	"os"
 	"strings"
 

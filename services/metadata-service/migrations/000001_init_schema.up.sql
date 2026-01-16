@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS compaction_jobs (
     project_id UUID NOT NULL REFERENCES project(id) ON DELETE CASCADE,
     schema_id INT NOT NULL REFERENCES schemas(id) ON DELETE CASCADE,
     status TEXT NOT NULL,
-    target_block_ids TEXT[] NOT NULL, -- Array of UUID strings
+    target_block_ids TEXT[] NOT NULL,
     output_file_path TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

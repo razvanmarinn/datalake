@@ -39,14 +39,14 @@ func main() {
 			}
 
 			logger.Info("starting consumer loop")
-			
+
 			// This blocks until the consumer fails or stops
 			app.Run(ctx)
 
-			// If we are here, the consumer stopped unexpectedly. 
+			// If we are here, the consumer stopped unexpectedly.
 			// Do NOT cancel(). Instead, log and retry.
 			logger.Error("consumer loop stopped unexpectedly. Restarting in 5 seconds...")
-			
+
 			select {
 			case <-time.After(5 * time.Second):
 				// Continue loop and restart Run()

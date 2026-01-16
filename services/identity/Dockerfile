@@ -1,4 +1,4 @@
-FROM golang:1.23.4 AS builder
+FROM golang:1.25 AS builder
 WORKDIR /app
 ARG GITHUB_PAT
 ENV GOPRIVATE=github.com/razvanmarinn/*
@@ -8,14 +8,14 @@ RUN git config --global url."https://${GITHUB_PAT}:x-oauth-basic@github.com/".in
 COPY . .
 
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o identity_service . 
-RUN ls -l 
+RUN CGO_ENABLED=0 GOOS=linux go build -o identity_service .
 
 FROM alpine:latest
 
-
-COPY --from=builder /app/ .
-
+WORKDIR /app
+COPY --from=builder /app/identity_service .
+COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/public ./public
 
 RUN chmod +x identity_service
 EXPOSE 8082

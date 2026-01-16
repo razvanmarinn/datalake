@@ -97,8 +97,8 @@ spec:
       serviceAccountName: metadata-service-sa
       containers:
         - name: metadata-service
-          image: razvan1y/metadata-service:latest
-          imagePullPolicy: Always
+          image: datalake/metadata-service
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081
             - containerPort: 50056
@@ -111,10 +111,12 @@ spec:
               value: "metadata-postgres"
             - name: DB_USER
               valueFrom:
-                secretKeyRef: { name: metadata-postgres-secret, key: postgres-user }
+                secretKeyRef:
+                  { name: metadata-postgres-secret, key: postgres-user }
             - name: DB_PASSWORD
               valueFrom:
-                secretKeyRef: { name: metadata-postgres-secret, key: postgres-password }
+                secretKeyRef:
+                  { name: metadata-postgres-secret, key: postgres-password }
 ---
 apiVersion: v1
 kind: Service

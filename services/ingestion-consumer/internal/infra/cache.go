@@ -89,7 +89,7 @@ func (cc *GRPCConnCache) Get(addr string) (*grpc.ClientConn, error) {
 func (cc *GRPCConnCache) CloseAll() {
     cc.mu.Lock()
     defer cc.mu.Unlock()
-    
+
     count := 0
     for addr, conn := range cc.conns {
         if err := conn.Close(); err != nil {

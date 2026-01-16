@@ -15,18 +15,18 @@ spec:
     spec:
       containers:
         - name: ingestion-consumer
-          image: razvan1y/ingestion-consumer:latest
-          imagePullPolicy: Always
+          image: datalake/ingestion-consumer
+          imagePullPolicy: IfNotPresent
           env:
             - name: KAFKA_BROKERS
               value: "my-kafka-cluster-kafka-plain-bootstrap.kafka.svc.cluster.local:9092"
-            
+
             - name: KAFKA_TOPIC_REGEX
               value: ".*"
 
             - name: KAFKA_GROUP_ID
               value: "ingestion-consumers-group"
-              
+
             - name: KAFKA_DLT_TOPIC
               value: "ingestion-dlt"
 

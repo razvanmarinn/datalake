@@ -20,7 +20,7 @@ type DataNodeClient struct {
 // NewDataNodeClient creates a new DataNodeClient.
 func NewDataNodeClient(address string) (*DataNodeClient, error) {
 	conn, err := grpc.Dial(
-		address, 
+		address,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
 	if err != nil {
@@ -58,7 +58,7 @@ func (c *DataNodeClient) FetchBlock(ctx context.Context, blockID string) ([]byte
 		if err != nil {
 			return nil, fmt.Errorf("error receiving chunk: %w", err)
 		}
-		
+
 		// Write the received chunk to the buffer
 		if _, err := dataBuffer.Write(resp.Chunk); err != nil {
 			return nil, fmt.Errorf("failed to write chunk to buffer: %w", err)

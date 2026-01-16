@@ -123,7 +123,6 @@ func NewLogger(config Config) *Logger {
 	}
 }
 
-
 func NewDefaultLogger(serviceName string) *Logger {
 	config := Config{
 		Level:       getEnv("LOG_LEVEL", LevelInfo),
@@ -195,31 +194,26 @@ func (l *Logger) WithProject(projectName string) *zap.Logger {
 func (l *Logger) WithError(err error) *zap.Logger {
 	return l.Logger.With(zap.String(FieldError, err.Error()))
 }
-
-// HTTP request logging middleware for Gin
 func (l *Logger) GinMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
 		raw := c.Request.URL.RawQuery
 
-		// Process request
 		c.Next()
 
-		// Calculate request duration
 		duration := time.Since(start).Milliseconds()
-
-		// Build log entry
-		logger := l.WithRequest(c).With(
-			zap.Int("status", c.Writer.Status()),
-			zap.Int64(FieldDuration, duration),
-		)
 
 		if raw != "" {
 			path = path + "?" + raw
 		}
 
-		// Log based on status code
+		logger := l.WithRequest(c).With(
+			zap.Int("status", c.Writer.Status()),
+			zap.Int64(FieldDuration, duration),
+			zap.String("path", path),
+		)
+
 		if c.Writer.Status() >= 500 {
 			logger.Error("HTTP request completed with server error")
 		} else if c.Writer.Status() >= 400 {

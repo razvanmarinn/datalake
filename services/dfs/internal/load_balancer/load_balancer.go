@@ -63,7 +63,7 @@ func NewLoadBalancer(numWorkers int, basePort int) *LoadBalancer {
 
 		req := &datanodev1.GetWorkerInfoRequest{}
 		resp, err := client.GetWorkerInfo(ctx, req)
-		cancel() 
+		cancel()
 
 		if err != nil {
 			log.Printf("failed to get worker info for worker %d: %v", i+1, err)

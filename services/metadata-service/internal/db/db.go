@@ -3,11 +3,13 @@ package db
 import (
 	"database/sql"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"time"
 
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"github.com/razvanmarinn/datalake/pkg/logging"
@@ -17,6 +19,28 @@ import (
 
 	_ "github.com/lib/pq"
 )
+
+func runMigrations(db *sql.DB, logger *logging.Logger) error {
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		return fmt.Errorf("could not create migration driver: %v", err)
+	}
+
+	migrationsPath := getEnv("MIGRATIONS_PATH", "file://migrations")
+	m, err := migrate.NewWithDatabaseInstance(
+		migrationsPath,
+		"postgres", driver)
+	if err != nil {
+		return fmt.Errorf("could not create migrate instance: %v", err)
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return fmt.Errorf("could not run up migrations: %v", err)
+	}
+
+	logger.Info("Database migrations applied successfully")
+	return nil
+}
 
 func GetDBConfig() (string, int, string, string, string) {
 	host := getEnv("DB_HOST", "localhost")
@@ -84,16 +108,8 @@ func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
 		return nil, fmt.Errorf("could not ping target database: %v", err)
 	}
 
-	// IMPORTANT: This SQL file must create the schemas, avro_schemas, and parquet_schemas tables
-	sqlFilePath := getEnv("SQL_PATH", "./sql/create_tables.sql")
-	sqlBytes, err := ioutil.ReadFile(sqlFilePath)
-	if err != nil {
-		return nil, fmt.Errorf("error reading SQL file from '%s': %v", sqlFilePath, err)
-	}
-
-	_, err = db.Exec(string(sqlBytes))
-	if err != nil {
-		return nil, fmt.Errorf("error executing SQL file: %v", err)
+	if err := runMigrations(db, logger); err != nil {
+		return nil, fmt.Errorf("failed to run migrations: %v", err)
 	}
 
 	log.Println("Database tables initialized successfully")

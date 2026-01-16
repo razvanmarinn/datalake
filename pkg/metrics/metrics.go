@@ -187,20 +187,20 @@ func NewGatewayMetrics(serviceName string) *GatewayMetrics {
 		ProxyRequestsTotal: sm.AddCustomCounter(
 			"proxy_requests_total",
 			"Total number of requests proxied to downstream services",
-			[]string{"method", "status_code"}, 
+			[]string{"method", "status_code"},
 			serviceName,
 		),
 		ProxyRequestDuration: sm.AddCustomHistogram(
 			"proxy_request_duration_seconds",
 			"Duration of proxy requests to downstream services in seconds",
-			[]string{"method"}, 
+			[]string{"method"},
 			nil,
 			serviceName,
 		),
 		AuthRequestsTotal: sm.AddCustomCounter(
 			"auth_requests_total",
 			"Total number of authentication requests",
-			[]string{"status"}, 
+			[]string{"status"},
 			serviceName,
 		),
 	}

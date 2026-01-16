@@ -10,12 +10,12 @@ metadata:
   name: master-election-role
   namespace: datalake
 rules:
-- apiGroups: ["coordination.k8s.io"]
-  resources: ["leases"]
-  verbs: ["get", "create", "update", "patch"]
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["get", "patch"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -23,8 +23,8 @@ metadata:
   name: master-election-binding
   namespace: datalake
 subjects:
-- kind: ServiceAccount
-  name: master-sa
+  - kind: ServiceAccount
+    name: master-sa
 roleRef:
   kind: Role
   name: master-election-role
@@ -36,12 +36,12 @@ metadata:
   name: master-headless
   namespace: datalake
 spec:
-  clusterIP: None 
+  clusterIP: None
   selector:
     app: master
   ports:
-  - port: 50055
-    name: grpc
+    - port: 50055
+      name: grpc
 ---
 apiVersion: v1
 kind: Service
@@ -52,9 +52,9 @@ spec:
   type: ClusterIP
   selector:
     app: master
-    role: active 
+    role: active
   ports:
-  - port: 50055
+    - port: 50055
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -75,7 +75,7 @@ spec:
       serviceAccountName: master-sa
       containers:
         - name: master
-          image: razvan1y/dfs-master:latest
+          image: datalake/dfs-master
           ports:
             - containerPort: 50055
           env:

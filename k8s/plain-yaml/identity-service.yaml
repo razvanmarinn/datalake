@@ -15,8 +15,8 @@ spec:
     spec:
       containers:
         - name: identity-service
-          image: razvan1y/identity-service:latest
-          imagePullPolicy: Always
+          image: datalake/identity-service
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8082
             - containerPort: 50056

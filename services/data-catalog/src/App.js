@@ -9,7 +9,7 @@ import SqlRunner from "./components/SqlRunner";
 
 const Dashboard = () => {
   const { token, username, logout } = useAuth();
-  
+
   const [projects, setProjects] = useState({});
   const [selectedProject, setSelectedProject] = useState(null);
 
@@ -18,7 +18,7 @@ const Dashboard = () => {
   const [schemaData, setSchemaData] = useState([]);
 
   // 'browse' | 'sql'
-  const [activeTab, setActiveTab] = useState("browse"); 
+  const [activeTab, setActiveTab] = useState("browse");
 
   useEffect(() => {
     if (token && username) {
@@ -28,9 +28,9 @@ const Dashboard = () => {
 
   const fetchProjects = async () => {
     try {
-      // TODO: Use env var for API URL. 8081 is metadata service
+      // Use API Gateway (8083) instead of direct service ports
       const projResp = await axios.get(
-        `http://localhost:8081/projects/by-username/${username}`,
+        `http://localhost:8083/meta/projects/by-username/${username}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -50,7 +50,7 @@ const Dashboard = () => {
 
     try {
       const schemaResp = await axios.get(
-        `http://localhost:8081/${projectName}/schemas`,
+        `http://localhost:8083/meta/${projectName}/schemas`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -68,7 +68,7 @@ const Dashboard = () => {
 
     try {
       const response = await axios.get(
-        `http://localhost:8086/projects/${selectedProject}/schemas/${schemaName}/data`,
+        `http://localhost:8083/query/projects/${selectedProject}/schemas/${schemaName}/data`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
@@ -108,10 +108,10 @@ const Dashboard = () => {
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Sidebar: Projects */}
-          <ProjectList 
-            projects={projects} 
-            selectedProject={selectedProject} 
-            onSelectProject={handleProjectClick} 
+          <ProjectList
+            projects={projects}
+            selectedProject={selectedProject}
+            onSelectProject={handleProjectClick}
           />
 
           {/* Main Content Area */}
@@ -153,16 +153,16 @@ const Dashboard = () => {
                             {selectedProject}
                           </span>
                         </h2>
-                        <SchemaBrowser 
-                          schemas={schemas} 
-                          onViewData={handleViewData} 
+                        <SchemaBrowser
+                          schemas={schemas}
+                          onViewData={handleViewData}
                         />
                       </div>
                     ) : (
-                      <DataView 
-                        schemaName={activeSchema} 
-                        data={schemaData} 
-                        onBack={() => setActiveSchema(null)} 
+                      <DataView
+                        schemaName={activeSchema}
+                        data={schemaData}
+                        onBack={() => setActiveSchema(null)}
                       />
                     )}
                   </>
@@ -170,9 +170,9 @@ const Dashboard = () => {
 
                 {/* Tab: SQL Runner */}
                 {activeTab === "sql" && (
-                  <SqlRunner 
-                    selectedProject={selectedProject} 
-                    projectId={projects[selectedProject]} 
+                  <SqlRunner
+                    selectedProject={selectedProject}
+                    projectId={projects[selectedProject]}
                   />
                 )}
               </>

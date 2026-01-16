@@ -15,12 +15,12 @@ service CoordinatorService {
 
 message AllocateBlockRequest {
     int64 size_bytes = 1;
-    string project_id = 2; 
+    string project_id = 2;
 }
 
 message AllocateBlockResponse {
     string block_id = 1;
-    repeated common.v1.BlockLocation target_datanodes = 2; 
+    repeated common.v1.BlockLocation target_datanodes = 2;
 }
 
 message CommitFileRequest {
@@ -37,8 +37,8 @@ message CommitFileResponse {
 
 message CommitCompactionRequest {
     string project_id = 1;
-    repeated string old_file_paths = 2; 
-    CommitFileRequest new_file = 3;    
+    repeated string old_file_paths = 2;
+    CommitFileRequest new_file = 3;
 }
 
 message CommitCompactionResponse {
