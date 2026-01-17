@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
+import React, { useState } from "react";
+import axios from "axios";
+import { useAuth } from "../context/AuthContext";
 
 const Login = () => {
   const [username, setUsername] = useState("");
@@ -12,7 +12,6 @@ const Login = () => {
     e.preventDefault();
     setError(null);
     try {
-      // TODO: Use environment variable for API URL
       const response = await axios.post("http://localhost:8083/auth/login/", {
         username,
         password,
@@ -29,7 +28,9 @@ const Login = () => {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="bg-white p-8 rounded-2xl shadow-md w-full max-w-sm">
         <h1 className="text-2xl font-bold mb-6 text-center">Login</h1>
-        {error && <div className="mb-4 text-red-500 text-sm text-center">{error}</div>}
+        {error && (
+          <div className="mb-4 text-red-500 text-sm text-center">{error}</div>
+        )}
         <form onSubmit={handleLogin}>
           <div className="mb-4">
             <label className="block text-gray-700 text-sm font-bold mb-2">

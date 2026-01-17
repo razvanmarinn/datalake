@@ -35,7 +35,6 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 
 	h.logger.Info("Received SQL Query", zap.String("query", req.Query), zap.String("project", req.ProjectID))
 
-	// 1. Parse SQL
 	stmt, err := sqlparser.Parse(req.Query)
 	if err != nil {
 		h.logger.Error("Failed to parse SQL", zap.Error(err))
@@ -45,7 +44,6 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 
 	replacements := make(map[string]string)
 
-	// APPROACH A: Manual Inspection (Restored for reliability)
 	if selectStmt, ok := stmt.(*sqlparser.Select); ok {
 		h.logger.Info("Detected SELECT statement, inspecting FROM clause manually")
 		for _, fromExpr := range selectStmt.From {
@@ -70,7 +68,6 @@ func (h *QueryHandler) RunSQL(c *gin.Context) {
 			}
 		}
 	} else {
-		// APPROACH B: Fallback Walk for non-SELECT queries
 		_ = sqlparser.Walk(func(node sqlparser.SQLNode) (bool, error) {
 			if table, ok := node.(*sqlparser.TableName); ok {
 				_ = h.rewriteTable(c.Request.Context(), req.ProjectID, table, replacements)
@@ -155,9 +152,7 @@ func (h *QueryHandler) rewriteTable(ctx context.Context, projectID string, table
 	var parquetUrls []string
 
 	for _, file := range files {
-		// Only supporting Parquet for now to stabilize the service
 		if strings.HasSuffix(file, ".parquet") {
-			// Ensure this URL matches your main.go route
 			url := fmt.Sprintf("'http://localhost:8086/virtual?project=%s&file=%s'", projectID, file)
 			parquetUrls = append(parquetUrls, url)
 		} else if strings.HasSuffix(file, ".avro") {
@@ -169,7 +164,6 @@ func (h *QueryHandler) rewriteTable(ctx context.Context, projectID string, table
 		return fmt.Errorf("no parquet files found for table %s (avro temporarily disabled)", tableName)
 	}
 
-	// Logging count to confirm we found all 30+ files
 	h.logger.Info("Generating read_parquet statement",
 		zap.String("table", tableName),
 		zap.Int("file_count", len(parquetUrls)))
@@ -183,9 +177,7 @@ func (h *QueryHandler) rewriteTable(ctx context.Context, projectID string, table
 	return nil
 }
 
-// resolveFilesForTable now searches for both directory-style (schema/file) and flat-style (schema_file)
 func (h *QueryHandler) resolveFilesForTable(ctx context.Context, projectID, schema string) ([]string, error) {
-	// FIX: Use the schema name directly as prefix to catch "schema/" AND "schema_"
 	prefix := schema
 
 	resp, err := h.MasterClient.ListFiles(ctx, projectID, prefix)
@@ -193,7 +185,6 @@ func (h *QueryHandler) resolveFilesForTable(ctx context.Context, projectID, sche
 		return nil, err
 	}
 
-	// Filter the results to ensure they strictly belong to this schema
 	var validFiles []string
 	for _, f := range resp.FilePaths {
 		if isStackPartOfSchema(f, schema) {
@@ -204,24 +195,21 @@ func (h *QueryHandler) resolveFilesForTable(ctx context.Context, projectID, sche
 	return validFiles, nil
 }
 
-// Helper to determine if a file belongs to a schema (handles both directory and flat naming)
 func isStackPartOfSchema(filename string, schema string) bool {
-	prefixDir := fmt.Sprintf("%s/", schema)  // Matches "hhh/compacted/..."
-	prefixFile := fmt.Sprintf("%s_", schema) // Matches "hhh_compacted_..."
+	prefixDir := fmt.Sprintf("%s/", schema)
+	prefixFile := fmt.Sprintf("%s_", schema)
 	return strings.HasPrefix(filename, prefixDir) || strings.HasPrefix(filename, prefixFile)
 }
 
-// VirtualFileHandler serves files to DuckDB using http.ServeContent to support Range requests.
 func (h *QueryHandler) VirtualFileHandler(c *gin.Context) {
 	projectID := c.Query("project")
-	filePath := c.Query("file") // DuckDB sends this as 'file'
+	filePath := c.Query("file")
 
 	if projectID == "" || filePath == "" {
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 
-	// Adjust path logic to match how MasterClient expects it
 	fullPath := filepath.Join(projectID, filePath)
 	if strings.HasPrefix(filePath, projectID+"/") {
 		fullPath = filePath
@@ -236,9 +224,6 @@ func (h *QueryHandler) VirtualFileHandler(c *gin.Context) {
 		return
 	}
 
-	// 1. Buffer the full file.
-	// We need a Seekable reader for ServeContent, so we must download the blocks first.
-	// Optimization TODO: Parse Range header manually to only fetch specific blocks.
 	var fileBuffer bytes.Buffer
 	for _, block := range metadata.Blocks {
 		loc, ok := metadata.Locations[block.BlockId]

@@ -35,15 +35,15 @@ const (
 type OperationLogEntry struct {
 	OpType    OpType      `json:"opType"`
 	Timestamp int64       `json:"timestamp"`
-	Payload   interface{} `json:"payload"` // Could be Inode, or DeleteRequest
+	Payload   interface{} `json:"payload"`
 }
 
 type MasterNode struct {
 	ID string
 
-	Namespace map[string]*Inode // PROJECT -> INODEs
+	Namespace map[string]*Inode
 
-	BlockMap     map[uuid.UUID]*BlockMetadata // INOTE UUID - > Blocks
+	BlockMap     map[uuid.UUID]*BlockMetadata
 	opLogFile    *os.File
 	opLock       sync.Mutex
 	LoadBalancer *load_balancer.LoadBalancer
@@ -92,7 +92,7 @@ func NewMasterNode() *MasterNode {
 }
 
 func (mn *MasterNode) ApplyReplicatedLog(opType OpType, payload []byte) error {
-	mn.lock.Lock() // Lock the whole state
+	mn.lock.Lock()
 	defer mn.lock.Unlock()
 
 	if opType == OpRegisterFile {
@@ -157,7 +157,6 @@ func (mn *MasterNode) GetFileBatches(filePath string) []uuid.UUID {
 	return nil
 }
 
-// GetBatchLocations retrieves the list of worker nodes holding a specific block.
 func (mn *MasterNode) GetBatchLocations(batchUUID uuid.UUID) []uuid.UUID {
 	mn.lock.Lock()
 	defer mn.lock.Unlock()
@@ -251,11 +250,11 @@ func (mn *MasterNode) ensureDirectory(fullPath, name, ownerID, projectID string)
 	}
 
 	op := OperationLogEntry{
-		OpType:    OpRegisterDir, // You might need to add this OpType
+		OpType:    OpRegisterDir,
 		Timestamp: time.Now().Unix(),
 		Payload:   dirInode,
 	}
-	_ = mn.appendToLog(op) // Handle error in prod
+	_ = mn.appendToLog(op)
 
 	mn.Namespace[fullPath] = dirInode
 	log.Printf("Created directory: %s", fullPath)
@@ -287,7 +286,7 @@ func (mn *MasterNode) AllocateBlock(req *coordinatorv1.AllocateBlockRequest) (*c
 	mn.BlockMap[newBlockID] = &BlockMetadata{
 		BlockID:  newBlockID,
 		Size:     req.SizeBytes,
-		Replicas: []uuid.UUID{workerUUID}, // <--- FIX: Store the worker immediately!
+		Replicas: []uuid.UUID{workerUUID},
 	}
 
 	log.Printf("Allocated block %s to worker %s", newBlockID, workerID)
@@ -392,14 +391,12 @@ func (mn *MasterNode) CommitCompaction(req *coordinatorv1.CommitCompactionReques
 			continue
 		}
 
-		// Delete physical blocks
 		for _, blockID := range inode.Blocks {
 			blockMeta, ok := mn.BlockMap[blockID]
 			if !ok {
 				continue
 			}
 
-			// Send DeleteBlock to all replicas
 			for _, replicaWorkerID := range blockMeta.Replicas {
 				client, _, _, _, err := mn.LoadBalancer.GetClientByWorkerID(replicaWorkerID.String())
 				if err != nil {
@@ -407,8 +404,6 @@ func (mn *MasterNode) CommitCompaction(req *coordinatorv1.CommitCompactionReques
 					continue
 				}
 
-				// Call DeleteBlock
-				// Use a short timeout context to avoid blocking the master for too long
 				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 				_, err = client.DeleteBlock(ctx, &datanodev1.DeleteBlockRequest{
 					BlockId: blockID.String(),
@@ -422,7 +417,6 @@ func (mn *MasterNode) CommitCompaction(req *coordinatorv1.CommitCompactionReques
 				}
 			}
 
-			// Clean up BlockMap
 			delete(mn.BlockMap, blockID)
 		}
 
@@ -475,11 +469,11 @@ func (mn *MasterNode) GetFileMetadata(projectID, filePath string) (*coordinatorv
 		blocks = append(blocks, &commonv1.BlockInfo{
 			BlockId:  blockUUID.String(),
 			Size:     blockMeta.Size,
-			Checksum: 0, // Calculate or store checksums if needed
+			Checksum: 0,
 		})
 
 		if len(blockMeta.Replicas) > 0 {
-			workerUUID := blockMeta.Replicas[0] // Just taking the first replica for now
+			workerUUID := blockMeta.Replicas[0]
 
 			_, workerInfo, _, _, err := mn.LoadBalancer.GetClientByWorkerID(workerUUID.String())
 
@@ -501,7 +495,7 @@ func (mn *MasterNode) GetFileMetadata(projectID, filePath string) (*coordinatorv
 	}, nil
 }
 
-func (mn *MasterNode) ListFiles(projectID, prefix string) ([]string, error) { // Updated to return error to match gRPC style usually
+func (mn *MasterNode) ListFiles(projectID, prefix string) ([]string, error) {
 	mn.lock.Lock()
 	defer mn.lock.Unlock()
 

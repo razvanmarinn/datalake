@@ -17,7 +17,6 @@ const Dashboard = () => {
   const [activeSchema, setActiveSchema] = useState(null);
   const [schemaData, setSchemaData] = useState([]);
 
-  // 'browse' | 'sql'
   const [activeTab, setActiveTab] = useState("browse");
 
   useEffect(() => {
@@ -28,7 +27,6 @@ const Dashboard = () => {
 
   const fetchProjects = async () => {
     try {
-      // Use API Gateway (8083) instead of direct service ports
       const projResp = await axios.get(
         `http://localhost:8083/meta/projects/by-username/${username}`,
         {
@@ -177,7 +175,6 @@ const Dashboard = () => {
                 )}
               </>
             ) : (
-              // Empty State (No Project Selected)
               <div className="h-full flex items-center justify-center bg-gray-50 border-2 border-dashed border-gray-200 rounded-xl p-12">
                 <div className="text-center">
                   <h3 className="mt-2 text-sm font-semibold text-gray-900">

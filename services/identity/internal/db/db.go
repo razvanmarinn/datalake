@@ -52,7 +52,6 @@ func GetDBConfig() (string, int, string, string, string) {
 	return host, port, user, password, dbname
 }
 
-// getEnv gets an environment variable or returns a default value
 func getEnv(key, defaultValue string) string {
 	value := os.Getenv(key)
 	if value == "" {
@@ -74,7 +73,6 @@ func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
 	}
 	defer defaultDB.Close()
 
-	// Test the connection
 	err = defaultDB.Ping()
 	if err != nil {
 		return nil, fmt.Errorf("could not ping default database: %v", err)
@@ -104,7 +102,6 @@ func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
 		return nil, fmt.Errorf("error connecting to target database: %v", err)
 	}
 
-	// Test the connection
 	err = db.Ping()
 	if err != nil {
 		return nil, fmt.Errorf("could not ping target database: %v", err)
@@ -141,7 +138,7 @@ func GetUser(db *sql.DB, username string) (*models.Client, error) {
 	err := row.Scan(&user.ID, &user.Username, &user.Email, &user.Password)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil // User not found
+			return nil, nil
 		}
 		return nil, fmt.Errorf("error scanning user: %v", err)
 	}

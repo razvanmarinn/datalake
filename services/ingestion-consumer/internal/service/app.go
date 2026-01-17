@@ -93,13 +93,11 @@ func (app *App) Run(ctx context.Context) {
 			return
 		}
 
-		// ---- PHASE 1: Topic discovery ----
 		topics, err := app.waitForTopics(ctx)
 		if err != nil {
 			return
 		}
 
-		// ---- PHASE 2: Consumption ----
 		app.Logger.Info("starting consumer group", "topics", topics)
 		app.consumeUntilChange(ctx, topics)
 
@@ -107,12 +105,10 @@ func (app *App) Run(ctx context.Context) {
 	}
 }
 
-// waitForTopics blocks until at least one topic matches the regex.
 func (app *App) waitForTopics(ctx context.Context) ([]string, error) {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
 
-	// Immediate attempt
 	if topics, err := infra.DiscoverTopics(app.Config.KafkaBrokers, app.Config.KafkaTopicRegex); err == nil && len(topics) > 0 {
 		return topics, nil
 	}

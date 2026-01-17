@@ -20,7 +20,6 @@ type GRPCServer struct {
 	Logger *logging.Logger
 }
 
-// GetProject retrieves project metadata by ID.
 func (s *GRPCServer) GetProject(ctx context.Context, req *catalogv1.GetProjectRequest) (*catalogv1.GetProjectResponse, error) {
 
 	projectName := req.GetProjectName()
@@ -72,7 +71,6 @@ func (s *GRPCServer) PollCompactionJobs(ctx context.Context, req *catalogv1.Poll
 	}, nil
 }
 
-// UpdateJobStatus updates the status of a compaction job and records the result.
 func (s *GRPCServer) UpdateJobStatus(ctx context.Context, req *catalogv1.UpdateJobStatusRequest) (*catalogv1.UpdateJobStatusResponse, error) {
 	s.Logger.Info("Received UpdateJobStatus request",
 		zap.String("job_id", req.GetJobId()),
@@ -84,9 +82,6 @@ func (s *GRPCServer) UpdateJobStatus(ctx context.Context, req *catalogv1.UpdateJ
 		return &catalogv1.UpdateJobStatusResponse{Success: false}, fmt.Errorf("invalid job ID: %w", err)
 	}
 
-	// 1. Update the Job
-	// If the status is "COMPLETED", this should also update the `files` table to mark old files as deleted
-	// and register the new `req.GetResultFilePath()`.
 	err = db.UpdateCompactionJobStatus(s.DB, jobID, req.GetStatus(), req.GetResultFilePath())
 	if err != nil {
 		s.Logger.Error("Failed to update job status", zap.Error(err))

@@ -29,7 +29,6 @@ func generateAvroSchema(schemaName string, fields []models.Field) (string, error
 		return "", err
 	}
 
-	// Validate the generated Avro schema
 	_, err = goavro.NewCodec(string(schemaBytes))
 	if err != nil {
 		return "", err

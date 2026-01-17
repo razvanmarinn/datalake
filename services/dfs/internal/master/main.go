@@ -68,7 +68,6 @@ func (s *server) CommitFile(ctx context.Context, req *coordinatorv1.CommitFileRe
 }
 
 func (s *server) GetFileMetadata(ctx context.Context, req *coordinatorv1.GetFileMetadataRequest) (*coordinatorv1.GetFileMetadataResponse, error) {
-	// Reads *might* be allowed on standby in the future, but for now block them to ensure consistency
 	if !s.masterNode.IsActive {
 		return nil, fmt.Errorf("node is standby")
 	}

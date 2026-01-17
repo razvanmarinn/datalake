@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+
 	"github.com/razvanmarinn/datalake/pkg/logging"
 
 	"os"
@@ -47,21 +48,17 @@ func initTracer(ctx context.Context) func(context.Context) error {
 		sdktrace.WithResource(res),
 	)
 
-	// ⬇️ Critical for traceparent to be extracted correctly!
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
 	return tp.Shutdown
 }
 
-
-
 func main() {
 	logger := logging.NewDefaultLogger("streaming-ingestion")
 	streamingMetrics := metrics.NewStreamingMetrics("streaming-ingestion")
 
 	ctx := context.Background()
-
 
 	shutdown := initTracer(ctx)
 	defer shutdown(ctx)

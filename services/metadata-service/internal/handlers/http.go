@@ -21,11 +21,9 @@ func SetupRouter(database *sql.DB, logger *logging.Logger, prov *kafka.Provision
 	auth := r.Group("/")
 	auth.Use(middleware.AuthMiddleware())
 	{
-		// --- Project Management ---
 		auth.POST("/project/register", helpers.RegisterProject(database, logger, idClient))
 		auth.GET("/projects/by-username/:username", helpers.GetProjectsByUser(database, logger, idClient))
 
-		// --- Schema Management ---
 		auth.POST("/:project_name/schema", helpers.CreateSchema(database, logger, prov))
 		auth.PUT("/:project_name/schema", helpers.UpdateSchema(database, logger))
 		auth.GET("/:project_name/schemas", helpers.ListSchemas(database, logger))

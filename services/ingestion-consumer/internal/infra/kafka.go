@@ -22,7 +22,6 @@ func DiscoverTopics(brokers []string, pattern string) ([]string, error) {
 	}
 	defer admin.Close()
 
-	// AdminClient APIs use millisecond timeouts
 	timeoutMs := int((10 * time.Second).Milliseconds())
 
 	metadata, err := admin.GetMetadata(nil, true, timeoutMs)
@@ -38,7 +37,6 @@ func DiscoverTopics(brokers []string, pattern string) ([]string, error) {
 	topics := make([]string, 0)
 
 	for topicName, topic := range metadata.Topics {
-		// Skip internal topics
 		if strings.HasPrefix(topicName, "__") {
 			continue
 		}

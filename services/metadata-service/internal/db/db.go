@@ -116,10 +116,7 @@ func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
 	return db, nil
 }
 
-// --- Project Management ---
-
 func RegisterProject(db *sql.DB, project *models.ProjectMetadata) error {
-	// Assuming created_at defaults to NOW() in DB schema
 	query := `INSERT INTO project (name, description, owner_id) VALUES ($1, $2, $3)`
 	_, err := db.Exec(query, project.ProjectName, project.Description, project.Owner)
 	if err != nil {
@@ -132,7 +129,6 @@ func GetProjectByID(db *sql.DB, projectID uuid.UUID) (*models.ProjectMetadata, e
 	query := `SELECT id, name, owner_id, created_at FROM project WHERE id = $1`
 
 	var p models.ProjectMetadata
-	// You might need to update models.ProjectMetadata to include ID and CreatedAt if not present
 	var idStr string
 
 	err := db.QueryRow(query, projectID).Scan(&idStr, &p.ProjectName, &p.Owner, &p.CreatedAt)
@@ -209,8 +205,6 @@ func GetProjectNameByID(db *sql.DB, projectID uuid.UUID) (string, error) {
 	return name, nil
 }
 
-// --- Schema Management ---
-
 func CreateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -218,7 +212,6 @@ func CreateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 	}
 	defer tx.Rollback()
 
-	// 1. Insert Metadata (Version 1)
 	var schemaID int
 	err = tx.QueryRow(
 		"INSERT INTO schemas (project_name, name, version) VALUES ($1, $2, 1) RETURNING id",
@@ -229,7 +222,6 @@ func CreateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 		return fmt.Errorf("error inserting schema metadata: %v", err)
 	}
 
-	// 2. Insert Avro Definition
 	_, err = tx.Exec(
 		"INSERT INTO avro_schemas (schema_id, definition) VALUES ($1, $2)",
 		schemaID, schema.AvroSchema,
@@ -238,7 +230,6 @@ func CreateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 		return fmt.Errorf("error inserting avro definition: %v", err)
 	}
 
-	// 3. Insert Parquet Definition
 	_, err = tx.Exec(
 		"INSERT INTO parquet_schemas (schema_id, definition) VALUES ($1, $2)",
 		schemaID, schema.ParquetSchema,
@@ -269,7 +260,7 @@ func GetSchema(db *sql.DB, projectName, schemaName string) (*models.SchemaWithDe
 	)
 
 	if err != nil {
-		return nil, err // Let the caller handle sql.ErrNoRows
+		return nil, err
 	}
 
 	return &s, nil
@@ -310,7 +301,6 @@ func UpdateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 	}
 	defer tx.Rollback()
 
-	// 1. Find the current max version
 	var currentVersion int
 	err = tx.QueryRow(
 		"SELECT COALESCE(MAX(version), 0) FROM schemas WHERE project_name = $1 AND name = $2",
@@ -324,7 +314,6 @@ func UpdateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 		return fmt.Errorf("cannot update: schema does not exist")
 	}
 
-	// 2. Insert New Version Metadata
 	newVersion := currentVersion + 1
 	var newID int
 	err = tx.QueryRow(
@@ -335,7 +324,6 @@ func UpdateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 		return fmt.Errorf("error inserting new version: %v", err)
 	}
 
-	// 3. Insert New Avro Definition
 	_, err = tx.Exec(
 		"INSERT INTO avro_schemas (schema_id, definition) VALUES ($1, $2)",
 		newID, schema.AvroSchema,
@@ -344,7 +332,6 @@ func UpdateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 		return fmt.Errorf("error inserting new avro definition: %v", err)
 	}
 
-	// 4. Insert New Parquet Definition
 	_, err = tx.Exec(
 		"INSERT INTO parquet_schemas (schema_id, definition) VALUES ($1, $2)",
 		newID, schema.ParquetSchema,
@@ -356,9 +343,7 @@ func UpdateSchema(db *sql.DB, schema models.SchemaWithDetails) error {
 	return tx.Commit()
 }
 
-// ListSchemas returns the latest version of every schema in a project
 func ListSchemas(db *sql.DB, projectName string) ([]models.SchemaWithDetails, error) {
-	// This distinct on logic gets the latest version for each schema name
 	query := `
         SELECT DISTINCT ON (s.name)
             s.id, s.project_name, s.name, s.version,
@@ -413,7 +398,6 @@ func RegisterDataFile(db *sql.DB, projectIDStr, schemaName, blockID, workerID, f
 		return fmt.Errorf("failed to resolve schema id for '%s' in project '%s': %v", schemaName, projectName, err)
 	}
 
-	// 3. Call the existing low-level RegisterBlock
 	block := models.Block{
 		BlockID:  blockID,
 		WorkerID: workerID,
@@ -429,7 +413,6 @@ func RegisterDataFile(db *sql.DB, projectIDStr, schemaName, blockID, workerID, f
 	return nil
 }
 
-// RegisterBlock inserts a new data file record
 func RegisterBlock(db *sql.DB, projectID uuid.UUID, schemaID int, block models.Block) error {
 	query := `INSERT INTO data_files (project_id, schema_id, block_id, worker_id, path, size, format) VALUES ($1, $2, $3, $4, $5, $6, $7)`
 	_, err := db.Exec(query, projectID, schemaID, block.BlockID, block.WorkerID, block.Path, block.Size, block.Format)
@@ -439,7 +422,6 @@ func RegisterBlock(db *sql.DB, projectID uuid.UUID, schemaID int, block models.B
 	return nil
 }
 
-// GetBlockLocations retrieves block locations for a list of block IDs
 func GetBlockLocations(db *sql.DB, blockIDs []string) ([]models.BlockLocation, error) {
 	query := `SELECT block_id, worker_id, path FROM data_files WHERE block_id = ANY($1)`
 	rows, err := db.Query(query, pq.Array(blockIDs))
@@ -630,7 +612,6 @@ func GetUncompactedFileStats(db *sql.DB) ([]models.UncompactedFileStat, error) {
 	return stats, nil
 }
 
-// GetUncompactedBlockIDs retrieves a list of uncompacted block IDs for a given project and schema
 func GetUncompactedBlockIDs(db *sql.DB, projectID uuid.UUID, schemaID, limit int) ([]string, error) {
 	query := `
         SELECT block_id
@@ -656,7 +637,6 @@ func GetUncompactedBlockIDs(db *sql.DB, projectID uuid.UUID, schemaID, limit int
 }
 
 func GetBlockIDsInPendingCompactionJobs(db *sql.DB, projectID uuid.UUID, schemaID int) (map[string]bool, error) {
-	// FIX: Added 'RUNNING' to status check to catch actively processing jobs
 	query := `
 		SELECT unnest(target_block_ids)
 		FROM compaction_jobs

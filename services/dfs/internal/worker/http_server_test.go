@@ -32,7 +32,7 @@ func TestHTTPServer_SecurityAndAccess(t *testing.T) {
 	}{
 		{
 			name:           "Valid Block Access",
-			requestPath:    "/blocks/" + validBlockID, // URL uses ID, server adds .bin
+			requestPath:    "/blocks/" + validBlockID,
 			expectedStatus: http.StatusOK,
 			description:    "Should allow reading a valid block in the storage dir",
 		},

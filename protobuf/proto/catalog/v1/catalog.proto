@@ -6,10 +6,8 @@ import "google/protobuf/timestamp.proto";
 option go_package = "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1;catalogv1";
 
 service CatalogService {
-  // Project Management
   rpc GetProject(GetProjectRequest) returns (GetProjectResponse);
 
-  // Job Management (Compaction, etc.)
   rpc RegisterDataFile(RegisterDataFileRequest) returns (RegisterDataFileResponse);
   rpc PollCompactionJobs(PollCompactionJobsRequest) returns (PollCompactionJobsResponse);
   rpc UpdateJobStatus(UpdateJobStatusRequest) returns (UpdateJobStatusResponse);
@@ -42,7 +40,7 @@ message PollCompactionJobsResponse {
 
 message UpdateJobStatusRequest {
   string job_id = 1;
-  string status = 2; // e.g., "COMPLETED", "FAILED"
+  string status = 2;
   string result_file_path = 3;
 }
 

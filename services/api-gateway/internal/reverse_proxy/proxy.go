@@ -21,7 +21,6 @@ func StreamingIngestionProxy(targetServiceURL string, logger *logging.Logger) gi
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
-	// Standard Director for host/scheme logic
 	proxy.Director = func(req *http.Request) {
 		req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
 		req.URL.Scheme = target.Scheme
@@ -75,7 +74,6 @@ func MetadataServiceProxy(targetServiceURL string, logger *logging.Logger) gin.H
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
 		req.Host = target.Host
-		// Path rewriting happens within the Gin handler
 	}
 
 	proxy.ErrorHandler = func(rw http.ResponseWriter, req *http.Request, err error) {
@@ -87,7 +85,7 @@ func MetadataServiceProxy(targetServiceURL string, logger *logging.Logger) gin.H
 
 		logger.WithRequest(c).Info("Forwarding schema request to Schema Registry", zap.String("path", c.Request.URL.Path))
 
-		originalPath := c.Param("path") // Get the wildcard path part
+		originalPath := c.Param("path")
 
 		userIDIfc, exists := c.Get("userID")
 		if !exists {
@@ -161,17 +159,14 @@ func GenericProxy(targetServiceURL string, logger *logging.Logger, stripPrefix s
 	}
 
 	return func(c *gin.Context) {
-		// Propagate tracing
 		otel.GetTextMapPropagator().Inject(c.Request.Context(), propagation.HeaderCarrier(c.Request.Header))
 
-		// If user is authenticated, pass userID header
 		if userID, ok := c.Get("userID"); ok {
 			c.Request.Header.Set("X-User-ID", userID.(string))
 		}
 
 		path := c.Param("path")
 		if stripPrefix != "" {
-			// Ensure path starts with /
 			if len(path) > 0 && path[0] != '/' {
 				path = "/" + path
 			}
@@ -186,8 +181,3 @@ func GenericProxy(targetServiceURL string, logger *logging.Logger, stripPrefix s
 		proxy.ServeHTTP(c.Writer, c.Request)
 	}
 }
-
-// user -> api gateway ( jwt token and req )
-//  req (/streaming-ingestion/project_name)
-//  if project_name exists
-//  forward to streaming-ingestion service with project_id ( uuid )

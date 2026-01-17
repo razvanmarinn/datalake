@@ -48,7 +48,7 @@ func main() {
 		StorageRoot:   storageRoot,
 		SchemaAPI:     "http://metadata-service.datalake.svc.cluster.local:8081",
 		CatalogClient: metadataClient,
-		MasterClient:  masterClient, // Now using the correct client
+		MasterClient:  masterClient,
 	})
 
 	log.Println("🔎 Fetching compaction job...")

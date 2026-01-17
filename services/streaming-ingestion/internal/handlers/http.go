@@ -70,7 +70,6 @@ func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter, logger *logging.Logger) *gin
 		kf.Metrics.ActiveIngestionSessions.Inc()
 		defer kf.Metrics.ActiveIngestionSessions.Dec()
 
-		// ★ Child span for full handler logic
 		ctx, span := tracer.Start(ctx, "HandleIngestRequest", trace.WithSpanKind(trace.SpanKindInternal))
 		defer span.End()
 
@@ -100,10 +99,8 @@ func SetupRouter(r *gin.Engine, kf *kf.KafkaWriter, logger *logging.Logger) *gin
 
 		jsonData, _ := json.Marshal(msg)
 
-		// Record data ingestion metrics
 		kf.Metrics.DataIngestionBytes.WithLabelValues(msg.ProjectId, "json").Add(float64(len(jsonData)))
 
-		// Inject trace context into Kafka headers
 		headers := make([]kafka.Header, 0)
 		carrier := kafkaHeaderCarrier{headers: &headers}
 		propagator.Inject(ctx, &carrier)

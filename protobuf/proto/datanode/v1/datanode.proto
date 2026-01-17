@@ -4,48 +4,48 @@ package datanode.v1;
 option go_package = "github.com/razvanmarinn/datalake/protobuf/gen/go/datanode/v1;datanodev1";
 
 service DataNodeService {
-    rpc PushBlock(stream PushBlockRequest) returns (PushBlockResponse);
-    rpc FetchBlock(FetchBlockRequest) returns (stream FetchBlockResponse);
-    rpc GetWorkerInfo(GetWorkerInfoRequest) returns (GetWorkerInfoResponse);
-    rpc DeleteBlock(DeleteBlockRequest) returns (DeleteBlockResponse);
+  rpc PushBlock(stream PushBlockRequest) returns (PushBlockResponse);
+  rpc FetchBlock(FetchBlockRequest) returns (stream FetchBlockResponse);
+  rpc GetWorkerInfo(GetWorkerInfoRequest) returns (GetWorkerInfoResponse);
+  rpc DeleteBlock(DeleteBlockRequest) returns (DeleteBlockResponse);
 }
 
 message PushBlockRequest {
-    oneof data {
-        BlockMetadata metadata = 1;
-        bytes chunk = 2;
-    }
+  oneof data {
+    BlockMetadata metadata = 1;
+    bytes chunk = 2;
+  }
 }
 
 message BlockMetadata {
-    string block_id = 1;
-    int64 total_size = 2;
+  string block_id = 1;
+  int64 total_size = 2;
 }
 
 message PushBlockResponse {
-    bool success = 1;
-    string message = 2;
+  bool success = 1;
+  string message = 2;
 }
 
 message FetchBlockRequest {
-    string block_id = 1;
+  string block_id = 1;
 }
 
 message FetchBlockResponse {
-    bytes chunk = 1;
+  bytes chunk = 1;
 }
 message GetWorkerInfoRequest {}
 
 message GetWorkerInfoResponse {
-    string worker_id = 1;
-    string address = 2; // Optional: helpful for verification
+  string worker_id = 1;
+  string address = 2;
 }
 
 message DeleteBlockRequest {
-    string block_id = 1;
+  string block_id = 1;
 }
 
 message DeleteBlockResponse {
-    bool success = 1;
-    string message = 2;
+  bool success = 1;
+  string message = 2;
 }

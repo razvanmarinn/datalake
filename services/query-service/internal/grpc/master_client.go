@@ -11,20 +11,17 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// MasterClient is a client for the CoordinatorService.
 type MasterClient struct {
 	conn    *grpc.ClientConn
 	service coordinatorv1.CoordinatorServiceClient
 }
 
-// NewMasterClient creates a new MasterClient.
 func NewMasterClient(address string) (*MasterClient, error) {
 	log.Printf("Attempting to dial Coordinator at address: %s", address)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Updated to use google.golang.org/grpc/credentials/insecure
 	conn, err := grpc.DialContext(
 		ctx,
 		address,
@@ -45,12 +42,10 @@ func NewMasterClient(address string) (*MasterClient, error) {
 	}, nil
 }
 
-// Close closes the client connection.
 func (c *MasterClient) Close() {
 	c.conn.Close()
 }
 
-// GetFileMetadata calls the GetFileMetadata RPC.
 func (c *MasterClient) GetFileMetadata(ctx context.Context, projectID, filePath string) (*coordinatorv1.GetFileMetadataResponse, error) {
 	log.Printf("Querying coordinator for metadata: project=%s file=%s", projectID, filePath)
 
@@ -61,7 +56,6 @@ func (c *MasterClient) GetFileMetadata(ctx context.Context, projectID, filePath 
 	return c.service.GetFileMetadata(ctx, req)
 }
 
-// ListFiles calls the ListFiles RPC.
 func (c *MasterClient) ListFiles(ctx context.Context, projectID, directoryPrefix string) (*coordinatorv1.ListFilesResponse, error) {
 	log.Printf("Listing files: project=%s prefix=%s", projectID, directoryPrefix)
 

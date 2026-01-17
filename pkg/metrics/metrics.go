@@ -100,7 +100,6 @@ func (sm *ServiceMetrics) PrometheusMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 
-		// Increment active connections
 		sm.ActiveConnections.Inc()
 		defer sm.ActiveConnections.Dec()
 
@@ -109,7 +108,6 @@ func (sm *ServiceMetrics) PrometheusMiddleware() gin.HandlerFunc {
 		duration := time.Since(start).Seconds()
 		status := strconv.Itoa(c.Writer.Status())
 
-		// Record metrics
 		sm.HTTPRequestsTotal.WithLabelValues(
 			c.Request.Method,
 			c.FullPath(),

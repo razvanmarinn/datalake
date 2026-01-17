@@ -86,7 +86,7 @@ func (s *CompactionScheduler) createCompactionJobs() {
 				_, err := db.CreateCompactionJob(s.DB, stat.ProjectID, stat.SchemaID, batch)
 				if err != nil {
 					s.Logger.Error("Failed to create compaction job batch", zap.Error(err))
-					continue // Try the next batch even if this one failed
+					continue
 				}
 				jobsCreated++
 			}

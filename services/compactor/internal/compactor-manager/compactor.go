@@ -15,7 +15,6 @@ import (
 
 	"github.com/linkedin/goavro/v2"
 
-	// Proto imports
 	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
 	commonv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/common/v1"
 	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
@@ -56,7 +55,6 @@ func (c *Compactor) getDfsClient(addr string) (datanodev1.DataNodeServiceClient,
 		return client, nil
 	}
 
-	// addr should be "IP:Port"
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to DFS worker at %s: %w", addr, err)
@@ -103,17 +101,14 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 
 	compactedFileName := fmt.Sprintf("compacted-%d.parquet", time.Now().Unix())
 
-	// Ensure we create a local temp folder
 	compactedFolder := filepath.Join(c.config.StorageRoot, projectID, schemaName, "compacted")
 	if err := os.MkdirAll(compactedFolder, 0755); err != nil {
 		return fmt.Errorf("failed to create local temp dir: %w", err)
 	}
 	localOutPath := filepath.Join(compactedFolder, compactedFileName)
 
-	// FIX: Clean up local file when done
 	defer os.Remove(localOutPath)
 
-	// Define final status logic
 	var finalErr error
 	defer func() {
 		status := "COMPLETED"
@@ -126,24 +121,20 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 			Status: status,
 		}
 		if status == "COMPLETED" {
-			// FIX: Path Logic Mismatch (Master checks filepath.Rel, so this needs to be correct)
 			req.ResultFilePath = filepath.Join(schemaName, "compacted", compactedFileName)
 		}
 
 		_, _ = c.config.CatalogClient.UpdateJobStatus(context.Background(), req)
 	}()
 
-	// Fetch Schema
 	schemas, err := c.FetchSchema(projectName, schemaName)
 	if err != nil {
 		finalErr = err
 		return err
 	}
 
-	// Debug logging for schema issues
 	log.Printf("📥 Using Parquet Schema: %s", schemas.ParquetSchema)
 
-	// Init Parquet Writer
 	fw, err := local.NewLocalFileWriter(localOutPath)
 	if err != nil {
 		finalErr = err
@@ -213,7 +204,6 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 	}
 	fw.Close()
 
-	// Upload
 	fileInfo, err := os.Stat(localOutPath)
 	if err != nil {
 		finalErr = err
@@ -222,14 +212,12 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 
 	fmt.Printf("Uploading compacted file (%d bytes)...\n", fileInfo.Size())
 
-	// FIX: Use new upload method that calls AllocateBlock
 	uploadedBlocks, err := c.uploadCompactedFile(ctx, localOutPath, projectID)
 	if err != nil {
 		finalErr = err
 		return fmt.Errorf("failed to upload compacted file: %w", err)
 	}
 
-	// Construct logical path including Project ID so Master Rel() works
 	fullCompactedPath := filepath.Join(projectID, schemaName, "compacted", compactedFileName)
 
 	var protoBlocks []*commonv1.BlockInfo
@@ -241,7 +229,7 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 			ProjectId:  projectID,
 			SchemaName: schemaName,
 			BlockId:    upload.BlockInfo.BlockId,
-			WorkerId:   upload.WorkerID, // <--- Correct Worker ID from Allocation
+			WorkerId:   upload.WorkerID,
 			FilePath:   fullCompactedPath,
 			FileSize:   upload.BlockInfo.Size,
 			FileFormat: "parquet",
@@ -252,7 +240,6 @@ func (c *Compactor) Compact(ctx context.Context, jobID string, projectID string,
 		}
 	}
 
-	// Commit Atomic Swap
 	_, err = c.config.MasterClient.CommitCompaction(ctx, &coordinatorv1.CommitCompactionRequest{
 		ProjectId:    projectID,
 		OldFilePaths: targetPaths,
@@ -319,13 +306,11 @@ func (c *Compactor) appendAvroToParquet(data []byte, pw *writer.JSONWriter) erro
 	return nil
 }
 
-// Helper struct to track which worker got which block
 type BlockUploadResult struct {
 	BlockInfo *commonv1.BlockInfo
 	WorkerID  string
 }
 
-// FIX: New implementation using Master Allocation logic
 func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string, projectID string) ([]BlockUploadResult, error) {
 	file, err := os.Open(localPath)
 	if err != nil {
@@ -348,7 +333,6 @@ func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string, p
 			break
 		}
 
-		// 1. Ask Master to Allocate Block (Registers it in Master's memory!)
 		allocReq := &coordinatorv1.AllocateBlockRequest{
 			ProjectId: projectID,
 			SizeBytes: int64(bytesRead),
@@ -363,15 +347,13 @@ func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string, p
 			return nil, fmt.Errorf("master returned no target datanodes")
 		}
 
-		targetNode := allocResp.TargetDatanodes[0] // Primary replica
+		targetNode := allocResp.TargetDatanodes[0]
 
-		// 2. Connect to the ASSIGNED worker
 		client, err := c.getDfsClient(targetNode.Address)
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to assigned worker %s: %w", targetNode.Address, err)
 		}
 
-		// 3. Push Block
 		stream, err := client.PushBlock(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create upload stream: %w", err)
@@ -380,7 +362,7 @@ func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string, p
 		metaReq := &datanodev1.PushBlockRequest{
 			Data: &datanodev1.PushBlockRequest_Metadata{
 				Metadata: &datanodev1.BlockMetadata{
-					BlockId:   allocResp.BlockId, // Use the ID Master gave us
+					BlockId:   allocResp.BlockId,
 					TotalSize: int64(bytesRead),
 				},
 			},
@@ -415,13 +397,12 @@ func (c *Compactor) uploadCompactedFile(ctx context.Context, localPath string, p
 			return nil, fmt.Errorf("datanode rejected block %s: %s", allocResp.BlockId, resp.Message)
 		}
 
-		// 4. Record Result
 		results = append(results, BlockUploadResult{
 			BlockInfo: &commonv1.BlockInfo{
 				BlockId: allocResp.BlockId,
 				Size:    int64(bytesRead),
 			},
-			WorkerID: targetNode.WorkerId, // The Worker ID returned by Master
+			WorkerID: targetNode.WorkerId,
 		})
 	}
 

@@ -31,14 +31,12 @@ func main() {
 
 	ctx := context.Background()
 
-	// Initialize OpenTelemetry
 	shutdown := initTracer(ctx, logger)
 	if err != nil {
 		logger.Fatal("failed to initialize tracer provider", zap.Error(err))
 	}
 	defer shutdown(ctx)
 
-	// Meter Provider
 	meter := otel.Meter("query-service")
 	queryCounter, err := meter.Int64Counter("queries.count")
 	if err != nil {
@@ -82,7 +80,7 @@ func main() {
 	})
 
 	r.GET("/query", queryHandler.GetData)
-	r.GET("/virtual", queryHandler.VirtualFileHandler) // Used internally by DuckDB
+	r.GET("/virtual", queryHandler.VirtualFileHandler)
 	r.HEAD("/virtual", queryHandler.VirtualFileHandler)
 
 	protected := r.Group("/")

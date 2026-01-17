@@ -54,7 +54,7 @@ func NewLoadBalancer(numWorkers int, basePort int) *LoadBalancer {
 		)
 		if err != nil {
 			log.Printf("did not connect to worker %d: %v", i+1, err)
-			continue // Skip if failed, don't crash
+			continue
 		}
 
 		client := datanodev1.NewDataNodeServiceClient(conn)

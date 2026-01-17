@@ -11,13 +11,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// DataNodeClient is a client for the DataNodeService.
 type DataNodeClient struct {
 	conn    *grpc.ClientConn
 	service datanodev1.DataNodeServiceClient
 }
 
-// NewDataNodeClient creates a new DataNodeClient.
 func NewDataNodeClient(address string) (*DataNodeClient, error) {
 	conn, err := grpc.Dial(
 		address,
@@ -32,12 +30,10 @@ func NewDataNodeClient(address string) (*DataNodeClient, error) {
 	}, nil
 }
 
-// Close closes the client connection.
 func (c *DataNodeClient) Close() {
 	c.conn.Close()
 }
 
-// FetchBlock retrieves a complete block from the DataNode by consuming the stream.
 func (c *DataNodeClient) FetchBlock(ctx context.Context, blockID string) ([]byte, error) {
 	req := &datanodev1.FetchBlockRequest{
 		BlockId: blockID,
@@ -59,7 +55,6 @@ func (c *DataNodeClient) FetchBlock(ctx context.Context, blockID string) ([]byte
 			return nil, fmt.Errorf("error receiving chunk: %w", err)
 		}
 
-		// Write the received chunk to the buffer
 		if _, err := dataBuffer.Write(resp.Chunk); err != nil {
 			return nil, fmt.Errorf("failed to write chunk to buffer: %w", err)
 		}
@@ -68,7 +63,6 @@ func (c *DataNodeClient) FetchBlock(ctx context.Context, blockID string) ([]byte
 	return dataBuffer.Bytes(), nil
 }
 
-// GetWorkerInfo retrieves info about the datanode (optional helper).
 func (c *DataNodeClient) GetWorkerInfo(ctx context.Context) (*datanodev1.GetWorkerInfoResponse, error) {
 	return c.service.GetWorkerInfo(ctx, &datanodev1.GetWorkerInfoRequest{})
 }

@@ -120,8 +120,6 @@ func (wn *WorkerNode) PushBlock(stream datanodev1.DataNodeService_PushBlockServe
 	}
 }
 
-// --- UPDATED RPC: FetchBlock ---
-// Note: Type changed from DfsService_... to DataNodeService_...
 func (wn *WorkerNode) FetchBlock(req *datanodev1.FetchBlockRequest, stream datanodev1.DataNodeService_FetchBlockServer) error {
 	blockID := req.BlockId
 	filePath := filepath.Join(wn.StorageDir, fmt.Sprintf("%s.bin", blockID))

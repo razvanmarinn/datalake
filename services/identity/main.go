@@ -53,14 +53,11 @@ func main() {
 		}
 	}()
 
-	// Initialize metrics
 	serviceMetrics := metrics.NewServiceMetrics("identity-service")
 
 	r := handlers.SetupRouter(database, logger)
-	// Setup metrics endpoint
 	metrics.SetupMetricsEndpoint(r)
 
-	// Add middleware
 	r.Use(serviceMetrics.PrometheusMiddleware())
 	r.Use(logger.GinMiddleware())
 

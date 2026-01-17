@@ -11,7 +11,7 @@ import (
 
 type KafkaWriter struct {
 	Writer        *kafka.Writer
-	TopicResolver *KafkaTopicResolver // Changed to pointer for consistency
+	TopicResolver *KafkaTopicResolver
 	Brokers       []string
 	Metrics       *metrics.StreamingMetrics
 }

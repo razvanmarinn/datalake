@@ -18,7 +18,7 @@ const (
 
 type WorkerNodeState struct {
 	ID           string   `json:"id"`
-	StoredBlocks []string `json:"stored_blocks"` // List of Block IDs found on disk
+	StoredBlocks []string `json:"stored_blocks"`
 	lock         sync.Mutex
 }
 
@@ -63,7 +63,6 @@ func (w *WorkerNodeState) UpdateState(workerNode *WorkerNode) error {
 	blockIDs := make([]string, 0)
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".bin") {
-			// filename is "uuid.bin", remove ".bin"
 			blockID := strings.TrimSuffix(file.Name(), ".bin")
 			blockIDs = append(blockIDs, blockID)
 		}
@@ -111,8 +110,8 @@ func (w *WorkerNodeState) LoadStateFromFile(pathOverride ...string) error {
 
 type MasterNodeState struct {
 	ID        string                       `json:"id"`
-	Namespace map[string]*Inode            `json:"namespace"` // Map of Path -> Inode
-	BlockMap  map[uuid.UUID]*BlockMetadata `json:"block_map"` // Map of BlockUUID -> BlockMetadata
+	Namespace map[string]*Inode            `json:"namespace"`
+	BlockMap  map[uuid.UUID]*BlockMetadata `json:"block_map"`
 }
 
 func NewMasterNodeState() *MasterNodeState {

@@ -18,7 +18,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// MemoryFile helper to make bytes.Reader compatible with Parquet Reader source interface
 type MemoryFile struct {
 	*bytes.Reader
 }
@@ -51,7 +50,6 @@ func NewQueryHandler(logger *zap.Logger, masterClient *grpc.MasterClient, queryC
 	}
 }
 
-// getDataNodeClient returns an existing client or creates a new one for the given address.
 func (h *QueryHandler) getDataNodeClient(address string) (*grpc.DataNodeClient, error) {
 	h.dataNodeClientsMu.Lock()
 	defer h.dataNodeClientsMu.Unlock()

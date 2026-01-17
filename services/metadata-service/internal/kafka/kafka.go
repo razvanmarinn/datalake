@@ -3,7 +3,7 @@ package kafka
 import (
 	"context"
 	"fmt"
-	"strings" // Added for naming safety
+	"strings"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -16,7 +16,7 @@ import (
 )
 
 type KafkaWriter struct {
-	Writer *kafka.Writer
+	Writer  *kafka.Writer
 	Brokers []string
 }
 
@@ -64,7 +64,7 @@ func (k *KafkaWriter) EnsureTopicExists(ctx context.Context, topic string) (bool
 
 	if err == nil && len(partitions) > 0 {
 
-		return true, nil // Topic already exists
+		return true, nil
 
 	}
 
@@ -83,7 +83,6 @@ func (k *KafkaWriter) WriteMessageForSchema(ctx context.Context, projectName str
 	return k.Writer.WriteMessages(ctx, topicMessage)
 
 }
-
 
 func NewProvisioner() (*Provisioner, error) {
 	config, err := rest.InClusterConfig()

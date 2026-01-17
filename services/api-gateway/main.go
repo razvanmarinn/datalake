@@ -20,7 +20,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0" // ADD THIS IMPORT
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -67,17 +67,11 @@ func main() {
 		_ = shutdown(ctx)
 	}()
 
-	// identity_service_cnn, err := grpc.Dial("identity-service:50056", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	// if err != nil {
-	// 	logger.Fatal("Failed to connect to gRPC server: ")
-	// }
-	// _ = pb.NewMetadataServiceClient(identity_service_cnn)
-
 	gatewayMetrics := metrics.NewGatewayMetrics("api-gateway")
 
 	r := gin.Default()
 	corsConfig := cors.Config{
-		AllowOrigins:     []string{"http://localhost:3001"}, // Allow your frontend
+		AllowOrigins:     []string{"http://localhost:3001"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
 		AllowCredentials: true,
@@ -89,12 +83,10 @@ func main() {
 	r.Use(otelgin.Middleware("api-gateway"))
 	r.Use(gatewayMetrics.PrometheusMiddleware())
 
-	// Public routes (Identity Service for Login/Register)
 	public := r.Group("/auth")
 
 	public.Any("/*path", reverse_proxy.GenericProxy("http://identity-service:8082", logger, "/auth"))
 
-	// Authenticated routes
 	auth := r.Group("/")
 	auth.Use(middleware.AuthMiddleware())
 	{
@@ -109,7 +101,6 @@ func main() {
 		Handler: r,
 	}
 
-	// Graceful shutdown
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Fatal("listen: %s\n")

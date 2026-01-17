@@ -5,12 +5,12 @@ import (
 
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"github.com/razvanmarinn/datalake/pkg/metrics"
-	identityv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/identity/v1"
 	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
+	identityv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/identity/v1"
 	"github.com/razvanmarinn/metadata-service/internal/db"
 	"github.com/razvanmarinn/metadata-service/internal/handlers"
 	"github.com/razvanmarinn/metadata-service/internal/kafka"
-	"github.com/razvanmarinn/metadata-service/internal/scheduler" // Add this import
+	"github.com/razvanmarinn/metadata-service/internal/scheduler"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

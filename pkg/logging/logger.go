@@ -21,13 +21,12 @@ type Logger struct {
 
 type Config struct {
 	Level       string
-	Format      string // "json" or "console"
+	Format      string
 	ServiceName string
 	Version     string
 	Environment string
 }
 
-// LogLevel constants for consistent usage
 const (
 	LevelDebug = "debug"
 	LevelInfo  = "info"
@@ -37,13 +36,11 @@ const (
 	LevelPanic = "panic"
 )
 
-// Format constants
 const (
 	FormatJSON    = "json"
 	FormatConsole = "console"
 )
 
-// Field name constants for Loki compatibility
 const (
 	FieldService   = "service"
 	FieldVersion   = "version"
@@ -63,9 +60,7 @@ const (
 	FieldProject   = "project"
 )
 
-// NewLogger creates a new structured logger instance
 func NewLogger(config Config) *Logger {
-	// Configure log level
 	var level zapcore.Level
 	switch strings.ToLower(config.Level) {
 	case LevelDebug:
@@ -84,7 +79,6 @@ func NewLogger(config Config) *Logger {
 		level = zapcore.InfoLevel
 	}
 
-	// Configure encoder
 	var encoderConfig zapcore.EncoderConfig
 	var encoder zapcore.Encoder
 
@@ -102,13 +96,10 @@ func NewLogger(config Config) *Logger {
 		encoder = zapcore.NewConsoleEncoder(encoderConfig)
 	}
 
-	// Create core
 	core := zapcore.NewCore(encoder, zapcore.AddSync(os.Stdout), level)
 
-	// Create logger with caller info
 	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 
-	// Add service metadata to all logs
 	logger = logger.With(
 		zap.String(FieldService, config.ServiceName),
 		zap.String(FieldVersion, config.Version),
@@ -172,7 +163,6 @@ func (l *Logger) WithRequest(c *gin.Context) *zap.Logger {
 
 }
 
-// WithDatabase creates a logger for database operations
 func (l *Logger) WithDatabase(operation string) *zap.Logger {
 	return l.Logger.With(
 		zap.String(FieldDatabase, "postgres"),
@@ -180,17 +170,14 @@ func (l *Logger) WithDatabase(operation string) *zap.Logger {
 	)
 }
 
-// WithKafka creates a logger for Kafka operations
 func (l *Logger) WithKafka(topic string) *zap.Logger {
 	return l.Logger.With(zap.String(FieldKafka, topic))
 }
 
-// WithProject creates a logger with project context
 func (l *Logger) WithProject(projectName string) *zap.Logger {
 	return l.Logger.With(zap.String(FieldProject, projectName))
 }
 
-// WithError creates a logger with error information
 func (l *Logger) WithError(err error) *zap.Logger {
 	return l.Logger.With(zap.String(FieldError, err.Error()))
 }
@@ -224,7 +211,6 @@ func (l *Logger) GinMiddleware() gin.HandlerFunc {
 	}
 }
 
-// Graceful error logging that doesn't crash the service
 func (l *Logger) LogStartupError(component string, err error) {
 	l.Logger.Error("Service startup failed",
 		zap.String("component", component),
@@ -232,7 +218,6 @@ func (l *Logger) LogStartupError(component string, err error) {
 	)
 }
 
-// Database connection logging
 func (l *Logger) LogDatabaseConnection(host string, port int, database string) {
 	l.WithDatabase("connect").Info("Attempting database connection",
 		zap.String("host", host),
@@ -247,7 +232,6 @@ func (l *Logger) LogDatabaseSuccess(database string) {
 	)
 }
 
-// User operation logging
 func (l *Logger) LogUserRegistration(username string, success bool) {
 	logger := l.Logger.With(
 		zap.String(FieldOperation, "user_registration"),
@@ -276,7 +260,6 @@ func (l *Logger) LogUserLogin(username string, success bool) {
 	}
 }
 
-// Project operation logging
 func (l *Logger) LogProjectRegistration(projectName string, ownerID string) {
 	l.WithProject(projectName).Info("Project registered successfully",
 		zap.String(FieldOperation, "project_registration"),
@@ -284,7 +267,6 @@ func (l *Logger) LogProjectRegistration(projectName string, ownerID string) {
 	)
 }
 
-// Kafka operation logging
 func (l *Logger) LogKafkaMessage(topic string, key string, success bool) {
 	logger := l.WithKafka(topic).With(
 		zap.String(FieldOperation, "kafka_publish"),
@@ -299,17 +281,14 @@ func (l *Logger) LogKafkaMessage(topic string, key string, success bool) {
 	}
 }
 
-// Sugar provides access to the sugared logger for printf-style logging
 func (l *Logger) Sugar() *zap.SugaredLogger {
 	return l.sugar
 }
 
-// Sync flushes any buffered log entries
 func (l *Logger) Sync() error {
 	return l.Logger.Sync()
 }
 
-// Helper functions
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value

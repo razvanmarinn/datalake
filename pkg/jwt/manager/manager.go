@@ -15,7 +15,6 @@ import (
 type Claims struct {
 	UserID   string               `json:"username"`
 	Projects map[string]uuid.UUID `json:"projects"`
-	// Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
@@ -55,7 +54,7 @@ func CreateToken(username string) (string, error) {
 
 func ParseToken(tokenStr string) (Claims, error) {
 	ctx := context.Background()
-	k, err := keyfunc.NewDefaultCtx(ctx, []string{"http://identity-service:8082/.well-known/jwks.json"}) // Context is used to end the refresh goroutine.
+	k, err := keyfunc.NewDefaultCtx(ctx, []string{"http://identity-service:8082/.well-known/jwks.json"})
 	if err != nil {
 		log.Fatalf("Failed to create a keyfunc.Keyfunc from the server's URL.\nError: %s", err)
 	}
@@ -72,8 +71,7 @@ func ParseToken(tokenStr string) (Claims, error) {
 	}
 	log.Printf("Parsed claims: %v", claims)
 
-
 	return Claims{
-		UserID:   claims["username"].(string),
+		UserID: claims["username"].(string),
 	}, nil
 }
