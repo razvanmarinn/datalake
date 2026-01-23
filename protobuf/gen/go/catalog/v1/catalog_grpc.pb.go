@@ -29,9 +29,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type CatalogServiceClient interface {
-	// Project Management
 	GetProject(ctx context.Context, in *GetProjectRequest, opts ...grpc.CallOption) (*GetProjectResponse, error)
-	// Job Management (Compaction, etc.)
 	RegisterDataFile(ctx context.Context, in *RegisterDataFileRequest, opts ...grpc.CallOption) (*RegisterDataFileResponse, error)
 	PollCompactionJobs(ctx context.Context, in *PollCompactionJobsRequest, opts ...grpc.CallOption) (*PollCompactionJobsResponse, error)
 	UpdateJobStatus(ctx context.Context, in *UpdateJobStatusRequest, opts ...grpc.CallOption) (*UpdateJobStatusResponse, error)
@@ -89,9 +87,7 @@ func (c *catalogServiceClient) UpdateJobStatus(ctx context.Context, in *UpdateJo
 // All implementations must embed UnimplementedCatalogServiceServer
 // for forward compatibility.
 type CatalogServiceServer interface {
-	// Project Management
 	GetProject(context.Context, *GetProjectRequest) (*GetProjectResponse, error)
-	// Job Management (Compaction, etc.)
 	RegisterDataFile(context.Context, *RegisterDataFileRequest) (*RegisterDataFileResponse, error)
 	PollCompactionJobs(context.Context, *PollCompactionJobsRequest) (*PollCompactionJobsResponse, error)
 	UpdateJobStatus(context.Context, *UpdateJobStatusRequest) (*UpdateJobStatusResponse, error)

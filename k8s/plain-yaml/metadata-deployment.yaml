@@ -42,6 +42,8 @@ spec:
     metadata:
       labels:
         app: metadata-postgres
+      annotations:
+        sidecar.istio.io/inject: "false"
     spec:
       containers:
         - name: postgres
@@ -74,7 +76,8 @@ metadata:
   namespace: datalake
 spec:
   ports:
-    - port: 5432
+    - name: tcp-postgres
+      port: 5432
   selector:
     app: metadata-postgres
 ---
@@ -93,6 +96,8 @@ spec:
     metadata:
       labels:
         app: metadata-service
+      annotations:
+        traffic.sidecar.istio.io/excludeOutboundPorts: "5432"
     spec:
       serviceAccountName: metadata-service-sa
       containers:

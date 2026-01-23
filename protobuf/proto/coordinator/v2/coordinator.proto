@@ -1,0 +1,107 @@
+syntax = "proto3";
+package coordinator.v2;
+
+import "common/v1/common.proto";
+
+option go_package = "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v2;coordinatorv2";
+
+service CoordinatorService {
+  rpc AllocateBlock(AllocateBlockRequest) returns (AllocateBlockResponse);
+  rpc CommitFile(CommitFileRequest) returns (CommitFileResponse);
+  rpc CommitCompaction(CommitCompactionRequest) returns (CommitCompactionResponse);
+  rpc GetFileMetadata(GetFileMetadataRequest) returns (GetFileMetadataResponse);
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+
+  rpc RegisterDataNode(RegisterDataNodeRequest) returns (RegisterDataNodeResponse);
+
+  rpc Heartbeat(stream HeartbeatRequest) returns (stream HeartbeatResponse);
+}
+
+message AllocateBlockRequest {
+  int64 size_bytes = 1;
+  string project_id = 2;
+}
+
+message AllocateBlockResponse {
+  string block_id = 1;
+  repeated common.v1.BlockLocation target_datanodes = 2;
+}
+
+message CommitFileRequest {
+  string project_id = 1;
+  string file_path = 2;
+  repeated common.v1.BlockInfo blocks = 3;
+  string file_format = 4;
+  string owner_id = 5;
+}
+
+message CommitFileResponse {
+  bool success = 1;
+}
+
+message CommitCompactionRequest {
+  string project_id = 1;
+  repeated string old_file_paths = 2;
+  CommitFileRequest new_file = 3;
+}
+
+message CommitCompactionResponse {
+  bool success = 1;
+}
+
+message GetFileMetadataRequest {
+  string project_id = 1;
+  string file_path = 2;
+}
+
+message GetFileMetadataResponse {
+  repeated common.v1.BlockInfo blocks = 1;
+  map<string, common.v1.BlockLocation> locations = 2;
+}
+
+message ListFilesRequest {
+  string project_id = 1;
+  string directory_prefix = 2;
+}
+
+message ListFilesResponse {
+  repeated string file_paths = 1;
+}
+
+message RegisterDataNodeRequest {
+  string worker_id = 1;
+  string grpc_address = 2;
+  string http_address = 3;
+  int64 storage_capacity = 4;
+  repeated string block_ids = 5;
+}
+
+message RegisterDataNodeResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message HeartbeatRequest {
+  string worker_id = 1;
+  int64 used_space_bytes = 2;
+  int64 free_space_bytes = 3;
+  repeated string corrupted_blocks = 4;
+}
+
+message HeartbeatResponse {
+  repeated CoordinatorCommand commands = 1;
+}
+
+message CoordinatorCommand {
+  enum CommandType {
+    COMMAND_TYPE_UNSPECIFIED = 0;
+    COMMAND_TYPE_REPLICATE_BLOCK = 1;
+    COMMAND_TYPE_DELETE_BLOCK = 2;
+    COMMAND_TYPE_REREGISTER = 3;
+  }
+
+  CommandType type = 1;
+  string block_id = 2;
+
+  repeated common.v1.BlockLocation target_datanodes = 3;
+}

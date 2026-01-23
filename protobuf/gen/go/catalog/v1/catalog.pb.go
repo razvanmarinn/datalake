@@ -293,7 +293,7 @@ func (x *PollCompactionJobsResponse) GetJobs() []*PollCompactionJob {
 type UpdateJobStatusRequest struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	JobId          string                 `protobuf:"bytes,1,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
-	Status         string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"` // e.g., "COMPLETED", "FAILED"
+	Status         string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
 	ResultFilePath string                 `protobuf:"bytes,3,opt,name=result_file_path,json=resultFilePath,proto3" json:"result_file_path,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache

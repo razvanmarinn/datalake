@@ -16,6 +16,9 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/keepalive"
 )
 
@@ -92,6 +95,13 @@ func main() {
 
 	grpcServer := grpc.NewServer(opts...)
 
+	healthServer := health.NewServer()
+
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	log.Println("Health check service registered successfully")
+
 	datanodev1.RegisterDataNodeServiceServer(grpcServer, worker)
 
 	go func() {
@@ -114,6 +124,8 @@ func main() {
 		log.Printf("Received signal: %v", sig)
 		log.Println("Shutting down worker node...")
 
+		healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+
 		if err := state.UpdateState(worker); err != nil {
 			log.Printf("failed to update state: %v", err)
 		}
@@ -130,5 +142,5 @@ func main() {
 
 	log.Println("Worker node is running. Press Ctrl+C to stop.")
 	wg.Wait()
-	log.Println("Main function exiting")
+	log.Println("Main function exiting !")
 }

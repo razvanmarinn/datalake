@@ -12,6 +12,8 @@ import (
 	"github.com/razvanmarinn/datalake/pkg/logging"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -150,6 +152,12 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer()
+	healthServer := health.NewServer()
+
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
+
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	log.Println("Health check service registered successfully")
 
 	coordinatorv1.RegisterCoordinatorServiceServer(grpcServer, &server{
 		masterNode: masterNode,

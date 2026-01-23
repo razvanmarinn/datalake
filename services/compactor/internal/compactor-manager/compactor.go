@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -71,8 +72,14 @@ type FetchSchemaResponse struct {
 }
 
 func (c *Compactor) FetchSchema(project, schemaName string) (*FetchSchemaResponse, error) {
-	url := fmt.Sprintf("%s/%s/schema/%s", c.config.SchemaAPI, project, schemaName)
-	resp, err := http.Get(url)
+	u, err := url.Parse(c.config.SchemaAPI)
+	if err != nil {
+		return nil, fmt.Errorf("invalid base schema API URL: %w", err)
+	}
+
+	u = u.JoinPath(project, "schema", schemaName)
+
+	resp, err := http.Get(u.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to call schema api: %w", err)
 	}

@@ -3,8 +3,6 @@ kind: Deployment
 metadata:
   name: grafana
   namespace: observability
-  labels:
-    app: grafana
 spec:
   replicas: 1
   selector:
@@ -15,92 +13,64 @@ spec:
       labels:
         app: grafana
     spec:
-      securityContext:
-        fsGroup: 472
-        runAsUser: 472
       containers:
         - name: grafana
           image: grafana/grafana:10.2.2
           ports:
             - containerPort: 3000
-              name: http-grafana
-          resources:
-            requests:
-              memory: "100Mi"
-              cpu: "50m"
-            limits:
-              memory: "200Mi"
-              cpu: "200m"
-          readinessProbe:
-            failureThreshold: 3
-            httpGet:
-              path: /robots.txt
-              port: 3000
-              scheme: HTTP
-            initialDelaySeconds: 10
-            periodSeconds: 30
-            successThreshold: 1
-            timeoutSeconds: 2
-          livenessProbe:
-            failureThreshold: 3
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            successThreshold: 1
-            tcpSocket:
-              port: 3000
-            timeoutSeconds: 1
+
           volumeMounts:
             - name: grafana-config
-              mountPath: /etc/grafana
+              mountPath: /etc/grafana/grafana.ini
+              subPath: grafana.ini
+
             - name: grafana-datasources
               mountPath: /etc/grafana/provisioning/datasources
-            - name: grafana-dashboards-config
+              readOnly: true
+
+            - name: grafana-dashboards-provider
               mountPath: /etc/grafana/provisioning/dashboards
-            - name: datalake-dashboard
+              readOnly: true
+
+            - name: grafana-dashboards-json
               mountPath: /var/lib/grafana/dashboards
-            - name: grafana-storage
-              mountPath: /var/lib/grafana
+              readOnly: true
+
       volumes:
         - name: grafana-config
           configMap:
             name: grafana-config
+
         - name: grafana-datasources
-          configMap:
-            name: grafana-datasources
-        - name: grafana-dashboards-config
+          projected:
+            sources:
+              - configMap:
+                  name: grafana-datasources
+              - configMap:
+                  name: grafana-datasource-loki
+
+        - name: grafana-dashboards-provider
           configMap:
             name: grafana-dashboards-config
-        - name: datalake-dashboard
-          configMap:
-            name: datalake-dashboard
-        - name: grafana-storage
-          persistentVolumeClaim:
-            claimName: grafana-storage
+
+        - name: grafana-dashboards-json
+          projected:
+            sources:
+              - configMap:
+                  name: datalake-dashboard
+              - configMap:
+                  name: grafana-dashboard-datalake-logs
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: grafana
   namespace: observability
-  labels:
-    app: grafana
 spec:
-  ports:
-    - port: 3000
-      targetPort: 3000
-      name: http
+  type: ClusterIP
   selector:
     app: grafana
-  type: ClusterIP
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: grafana-storage
-  namespace: observability
-spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000

@@ -5,7 +5,6 @@ metadata:
 
 build:
   artifacts:
-    # --- 1. Special Cases (Multiple Dockerfiles in one folder) ---
     - image: datalake/dfs-master
       context: services/dfs
       docker:
@@ -16,7 +15,6 @@ build:
       docker:
         dockerfile: Dockerfile.worker
 
-    # --- 2. Standard Services ---
     - image: datalake/ingestion-consumer
       context: services/ingestion-consumer
       docker:
@@ -58,7 +56,7 @@ manifests:
     - k8s/plain-yaml/network-policies/*.yaml
 
 deploy:
-  kubectl: {} # This just tells Skaffold "Use kubectl to deploy the manifests found above"
+  kubectl: {}
 
 portForward:
   - resourceType: service

@@ -13,6 +13,7 @@
 # Logs
 *.log
 /datalake_data/
+/cicd/reports/
 # Vendor
 /vendor
 

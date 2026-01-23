@@ -70,16 +70,43 @@ func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
 	defaultConnStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=postgres sslmode=disable",
 		host, port, user, password)
 
-	logger.Info("Connecting to default database", zap.String("host", host), zap.Int("port", port))
-	defaultDB, err := sql.Open("postgres", defaultConnStr)
+	var defaultDB *sql.DB
+	var err error
+
+	maxRetries := 5
+	retryInterval := 2 * time.Second
+
+	for i := 0; i < maxRetries; i++ {
+		logger.Info("Attempting to connect to default database",
+			zap.String("host", host),
+			zap.Int("port", port),
+			zap.Int("attempt", i+1))
+
+		defaultDB, err = sql.Open("postgres", defaultConnStr)
+		if err == nil {
+			err = defaultDB.Ping()
+		}
+
+		if err == nil {
+			logger.Info("Successfully connected to default database")
+			break
+		}
+
+		logger.Warn("Failed to connect to default database, retrying...",
+			zap.Error(err),
+			zap.Duration("retry_in", retryInterval))
+
+		if defaultDB != nil {
+			defaultDB.Close()
+		}
+
+		time.Sleep(retryInterval)
+	}
+
 	if err != nil {
-		return nil, fmt.Errorf("error connecting to default database: %v", err)
+		return nil, fmt.Errorf("failed to connect to default database after %d attempts: %v", maxRetries, err)
 	}
 	defer defaultDB.Close()
-
-	if err = defaultDB.Ping(); err != nil {
-		return nil, fmt.Errorf("could not ping default database: %v", err)
-	}
 
 	var exists bool
 	query := fmt.Sprintf("SELECT EXISTS(SELECT datname FROM pg_database WHERE datname = '%s')", dbname)
@@ -93,7 +120,7 @@ func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
 		if err != nil {
 			return nil, fmt.Errorf("error creating database: %v", err)
 		}
-		log.Printf("Database %s created successfully", dbname)
+		logger.Info("Database created successfully", zap.String("dbname", dbname))
 	}
 
 	dbConnStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
@@ -112,7 +139,7 @@ func Connect_to_db(logger *logging.Logger) (*sql.DB, error) {
 		return nil, fmt.Errorf("failed to run migrations: %v", err)
 	}
 
-	log.Println("Database tables initialized successfully")
+	logger.Info("Database tables initialized successfully")
 	return db, nil
 }
 

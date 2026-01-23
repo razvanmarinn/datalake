@@ -81,6 +81,11 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+          livenessProbe:
+            grpc:
+              port: 50051
+            initialDelaySeconds: 10
+            periodSeconds: 10
           volumeMounts:
             - name: global-storage
               mountPath: /data
