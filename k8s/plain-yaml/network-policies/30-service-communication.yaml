@@ -8,20 +8,20 @@ spec:
     matchLabels:
       app: identity-service
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: api-gateway
-    - podSelector:
-        matchLabels:
-          app: metadata-service
-    ports:
-    - protocol: TCP
-      port: 8082
-    - protocol: TCP
-      port: 50056
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api-gateway
+        - podSelector:
+            matchLabels:
+              app: metadata-service
+      ports:
+        - protocol: TCP
+          port: 8082
+        - protocol: TCP
+          port: 50056
 
 ---
 apiVersion: networking.k8s.io/v1
@@ -34,20 +34,20 @@ spec:
     matchLabels:
       app: metadata-service
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: api-gateway
-    - podSelector:
-        matchLabels:
-          app: ingestion-consumer
-    ports:
-    - protocol: TCP
-      port: 8081
-    - protocol: TCP
-      port: 50056
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api-gateway
+        - podSelector:
+            matchLabels:
+              app: ingestion-consumer
+      ports:
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 50056
 
 ---
 apiVersion: networking.k8s.io/v1
@@ -60,17 +60,17 @@ spec:
     matchLabels:
       app.kubernetes.io/name: query-service
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: api-gateway
-    ports:
-    - protocol: TCP
-      port: 8086
-    - protocol: TCP
-      port: 50051
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8086
+        - protocol: TCP
+          port: 50051
 
 ---
 apiVersion: networking.k8s.io/v1
@@ -83,21 +83,21 @@ spec:
     matchLabels:
       app: master
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: query-service
-    - podSelector:
-        matchLabels:
-          app: worker
-    - podSelector:
-        matchLabels:
-          app: ingestion-consumer
-    ports:
-    - protocol: TCP
-      port: 50055
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: query-service
+        - podSelector:
+            matchLabels:
+              app: worker
+        - podSelector:
+            matchLabels:
+              app: ingestion-consumer
+      ports:
+        - protocol: TCP
+          port: 50055
 
 ---
 apiVersion: networking.k8s.io/v1
@@ -110,20 +110,20 @@ spec:
     matchLabels:
       app: worker
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: query-service
-    - podSelector:
-        matchLabels:
-          app: master
-    - podSelector:
-        matchLabels:
-          app: worker
-    ports:
-    - protocol: TCP
-      port: 50051
-    - protocol: TCP
-      port: 8080
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: query-service
+        - podSelector:
+            matchLabels:
+              app: master
+        - podSelector:
+            matchLabels:
+              app: worker
+      ports:
+        - protocol: TCP
+          port: 50051
+        - protocol: TCP
+          port: 8080

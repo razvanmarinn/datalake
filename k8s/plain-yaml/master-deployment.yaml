@@ -85,12 +85,12 @@ spec:
                   fieldPath: metadata.name
           startupProbe:
             grpc:
-              port: 50051
+              port: 50055
             failureThreshold: 30
             periodSeconds: 10
           livenessProbe:
             grpc:
-              port: 50051
+              port: 50055
             initialDelaySeconds: 5
             periodSeconds: 10
             failureThreshold: 3

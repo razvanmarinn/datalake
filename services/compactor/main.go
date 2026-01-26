@@ -6,9 +6,10 @@ import (
 	"os"
 	"time"
 
+	compactormanager "github.com/razvanmarinn/datalake/compactor/internal/compactor-manager"
+	"github.com/razvanmarinn/datalake/pkg/dfs-client"
 	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
 	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
-	compactormanager "github.com/razvanmarinn/datalake/services/compactor/internal/compactor-manager"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -36,6 +37,13 @@ func main() {
 	if masterServiceAddr == "" {
 		masterServiceAddr = "master.datalake.svc.cluster.local:50055"
 	}
+
+	dfsClient, err := dfs.NewClient(masterServiceAddr)
+	if err != nil {
+		log.Fatalf("Failed to create DFS client: %v", err)
+	}
+	defer dfsClient.Close()
+
 	masterConn, err := grpc.NewClient(masterServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("Failed to connect to master service: %v", err)
@@ -49,6 +57,7 @@ func main() {
 		SchemaAPI:     "http://metadata-service.datalake.svc.cluster.local:8081",
 		CatalogClient: metadataClient,
 		MasterClient:  masterClient,
+		DFSClient:     dfsClient,
 	})
 
 	log.Println("🔎 Fetching compaction job...")

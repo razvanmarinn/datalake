@@ -27,11 +27,11 @@ type MessageBatch struct {
 }
 
 type Message struct {
-	Key       []byte
-	Value     []byte
-	OwnerId   string
+	Key         []byte
+	Value       []byte
+	OwnerId     string
 	ProjectName string
-	Data      map[string]interface{}
+	Data        map[string]interface{}
 }
 
 type Batcher struct {
@@ -75,11 +75,11 @@ func NewMessageBatch(topic string) *MessageBatch {
 
 func (mb *MessageBatch) AddMessage(key, value []byte, ownerId, projectName string, data map[string]interface{}) {
 	mb.Messages = append(mb.Messages, Message{
-		Key:       key,
-		Value:     value,
-		OwnerId:   ownerId,
+		Key:         key,
+		Value:       value,
+		OwnerId:     ownerId,
 		ProjectName: projectName,
-		Data:      data,
+		Data:        data,
 	})
 
 	if len(mb.Messages) == 1 {

@@ -86,7 +86,7 @@ func (c *dfsClient) getWorkerClient(addr string) (datanodev1.DataNodeServiceClie
 
 func (c *dfsClient) List(ctx context.Context, path string) ([]string, error) {
 	resp, err := c.masterClient.ListFiles(ctx, &coordinatorv1.ListFilesRequest{
-		ProjectId:       "default",
+		ProjectId:       ctx.Value("projectID").(string),
 		DirectoryPrefix: path,
 	})
 	if err != nil {
