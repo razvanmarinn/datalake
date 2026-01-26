@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
+	"github.com/razvanmarinn/datalake/pkg/dfs-client"
 	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
 	"github.com/razvanmarinn/ingestion_consumer/internal/batcher"
 	"github.com/razvanmarinn/ingestion_consumer/internal/config"
@@ -31,6 +32,7 @@ type App struct {
 	DLTProducer    *kafka.Producer
 
 	GrpcConnCache *infra.GRPCConnCache
+	DFSClient     dfs.Client
 
 	Batcher     *batcher.Batcher
 	BatcherLock sync.Mutex
@@ -52,6 +54,11 @@ func NewApp(cfg config.Config, logger *slog.Logger) (*App, error) {
 		return nil, err
 	}
 
+	dfsClient, err := dfs.NewClient(cfg.MasterAddress)
+	if err != nil {
+		return nil, err
+	}
+
 	return &App{
 		Config:         cfg,
 		Logger:         logger,
@@ -59,6 +66,7 @@ func NewApp(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Tracer:         otel.Tracer(ServiceName),
 		HttpClient:     &http.Client{Timeout: 5 * time.Second},
 		GrpcConnCache:  infra.NewGRPCConnCache(),
+		DFSClient:      dfsClient,
 		DLTProducer:    dltProducer,
 		Batcher:        batcher.NewBatcher("mixed-topics-batch", MaxBatchSize),
 		SchemaCache:    infra.NewSchemaCache(),

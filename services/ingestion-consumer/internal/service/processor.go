@@ -4,16 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"reflect"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/razvanmarinn/datalake/pkg/dfs-client"
 	catalogv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/catalog/v1"
-	commonv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/common/v1"
-	coordinatorv1 "github.com/razvanmarinn/datalake/protobuf/gen/go/coordinator/v1"
-	datanodev1 "github.com/razvanmarinn/datalake/protobuf/gen/go/datanode/v1"
 	"github.com/razvanmarinn/ingestion_consumer/internal/batcher"
 	"github.com/razvanmarinn/ingestion_consumer/internal/infra"
 
@@ -80,115 +77,50 @@ func (app *App) dispatchBatch(ctx context.Context, batch *batcher.MessageBatch) 
 	}
 	dataSize := int64(len(avroBytes))
 
-	masterConn, err := app.GrpcConnCache.Get(app.Config.MasterAddress)
+	fileName := fmt.Sprintf("%s/%s/%s_%s.avro", projectName, key, key, time.Now().Format("20060102150405"))
+	app.Logger.Info("ingesting to dfs", "file", fileName)
+
+	f, err := app.DFSClient.Create(ctx, fileName,
+		dfs.WithProjectID(projectId),
+		dfs.WithOwnerID(batch.Messages[0].OwnerId),
+		dfs.WithFormat("avro"),
+	)
 	if err != nil {
 		return err
 	}
-	masterClient := coordinatorv1.NewCoordinatorServiceClient(masterConn)
 
-	allocResp, err := masterClient.AllocateBlock(ctx, &coordinatorv1.AllocateBlockRequest{
-		ProjectId: projectId,
-		SizeBytes: dataSize,
-	})
+	if _, err := f.Write(avroBytes); err != nil {
+		return err
+	}
+
+	if err := f.Close(); err != nil {
+		return err
+	}
+
+	stat, err := f.Stat()
 	if err != nil {
-		return fmt.Errorf("allocate block failed: %w", err)
-	}
-
-	blockId := allocResp.BlockId
-	targets := allocResp.TargetDatanodes
-
-	if len(targets) == 0 {
-		return fmt.Errorf("no target datanodes allocated for block %s", blockId)
-	}
-
-	target := targets[0]
-
-	workerConn, err := app.GrpcConnCache.Get(target.Address)
-	if err != nil {
-		return fmt.Errorf("failed to connect to datanode %s: %w", target.Address, err)
-	}
-
-	workerClient := datanodev1.NewDataNodeServiceClient(workerConn)
-	stream, err := workerClient.PushBlock(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to open stream to datanode: %w", err)
-	}
-
-	err = stream.Send(&datanodev1.PushBlockRequest{
-		Data: &datanodev1.PushBlockRequest_Metadata{
-			Metadata: &datanodev1.BlockMetadata{
-				BlockId:   blockId,
-				TotalSize: dataSize,
-			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("failed to send block metadata: %w", err)
-	}
-
-	for i := 0; i < len(avroBytes); i += ChunkSize {
-		end := i + ChunkSize
-		if end > len(avroBytes) {
-			end = len(avroBytes)
-		}
-
-		err = stream.Send(&datanodev1.PushBlockRequest{
-			Data: &datanodev1.PushBlockRequest_Chunk{
-				Chunk: avroBytes[i:end],
-			},
-		})
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("failed to send chunk: %w", err)
-		}
-	}
-
-	pushResp, err := stream.CloseAndRecv()
-	if err != nil {
-		return fmt.Errorf("failed to close stream/recv response: %w", err)
-	}
-	if !pushResp.Success {
-		return fmt.Errorf("datanode reported failure: %s", pushResp.Message)
-	}
-
-	fileName := fmt.Sprintf("%s/%s/%s_%s.avro", projectName, key, key, time.Now().Format("20060102150405"))
-	app.Logger.Info("committing file", "file", fileName, "block_id", blockId)
-
-	_, err = masterClient.CommitFile(ctx, &coordinatorv1.CommitFileRequest{
-		ProjectId:  projectId,
-		OwnerId:    batch.Messages[0].OwnerId,
-		FilePath:   fileName,
-		FileFormat: "avro",
-		Blocks: []*commonv1.BlockInfo{
-			{
-				BlockId: blockId,
-				Size:    dataSize,
-			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("commit file failed: %w", err)
+		return err
 	}
 
 	catalogConn, err := app.GrpcConnCache.Get(app.Config.CatalogServiceAddress)
 	if err != nil {
-		return fmt.Errorf("failed to get catalog connection: %w", err)
+		return err
 	}
 	catalogClient := catalogv1.NewCatalogServiceClient(catalogConn)
 
-	_, err = catalogClient.RegisterDataFile(ctx, &catalogv1.RegisterDataFileRequest{
-		ProjectId:  projectId,
-		SchemaName: key,
-		BlockId:    blockId,
-		WorkerId:   target.WorkerId,
-		FilePath:   fileName,
-		FileSize:   dataSize,
-		FileFormat: "avro",
-	})
-	if err != nil {
-		return fmt.Errorf("catalog registration failed: %w", err)
+	for _, block := range stat.Blocks {
+		_, err = catalogClient.RegisterDataFile(ctx, &catalogv1.RegisterDataFileRequest{
+			ProjectId:  projectId,
+			SchemaName: key,
+			BlockId:    block.BlockId,
+			WorkerId:   block.WorkerId,
+			FilePath:   fileName,
+			FileSize:   dataSize,
+			FileFormat: "avro",
+		})
+		if err != nil {
+			return err
+		}
 	}
 
 	app.Logger.Info("file registered in catalog", "file", fileName)
