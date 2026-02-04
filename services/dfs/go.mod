@@ -4,7 +4,8 @@ go 1.25.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/razvanmarinn/datalake v0.0.0-20260113230158-f263e5edea45
+	github.com/prometheus/client_golang v1.23.2
+	github.com/razvanmarinn/datalake v0.0.0-20260204190008-9db2999cced1
 	github.com/stretchr/testify v1.11.1
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.72.2
@@ -46,7 +47,6 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
@@ -78,5 +78,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
-
-replace github.com/razvanmarinn/datalake => ../..

@@ -39,7 +39,7 @@ func Load() (Config, error) {
 		KafkaGroupID:          groupID,
 		KafkaDLTTopic:         getEnv("KAFKA_DLT_TOPIC", "ingestion-dlt"),
 		SchemaRegistryHost:    getEnv("SCHEMA_REGISTRY_HOST", "schema-registry.datalake:8081"),
-		CatalogServiceAddress: getEnv("CATALOG_SERVICE_ADDRESS", "metadata-service:50055"),
+		CatalogServiceAddress: getEnv("CATALOG_SERVICE_ADDRESS", "metadata-service:50056"),
 		MasterAddress:         getEnv("MASTER_ADDRESS", "master:50055"),
 		OtelCollectorAddr:     getEnv("OTEL_COLLECTOR_ADDR", "otel-collector.observability.svc.cluster.local:4317"),
 	}, nil

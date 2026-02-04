@@ -22,7 +22,7 @@ func main() {
 
 	metadataServiceAddr := os.Getenv("METADATA_SERVICE_ADDR")
 	if metadataServiceAddr == "" {
-		metadataServiceAddr = "metadata-service:50055"
+		metadataServiceAddr = "metadata-service:50056"
 	}
 
 	metaConn, err := grpc.NewClient(metadataServiceAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
