@@ -61,3 +61,33 @@ proto-lint:
 proto-clean:
 	@echo "🧹 Cleaning generated Protobuf files..."
 	rm -rf $(PROTO_ROOT)/gen/go/*
+
+.PHONY: test test-coverage test-service
+
+GO_SERVICES := dfs identity metadata-service query-service api-gateway ingestion-consumer streaming-ingestion compactor
+
+test: ## Run all tests across all Go services
+	@echo "🧪 Running all tests..."
+	@for service in $(GO_SERVICES); do \
+		echo "\n=== Testing $$service ==="; \
+		cd ../services/$$service && go test ./... -v || exit 1; \
+	done
+	@echo "✅ All tests passed!"
+
+test-coverage: ## Run all tests with coverage reports
+	@echo "📊 Running tests with coverage..."
+	@mkdir -p reports
+	@for service in $(GO_SERVICES); do \
+		echo "\n=== Coverage for $$service ==="; \
+		(cd ../services/$$service && \
+		go test ./... -coverprofile=coverage.out && \
+		go tool cover -func=coverage.out | tail -1 && \
+		mv coverage.out ../../cicd/reports/$$service-coverage.out) || true; \
+	done
+	@echo "✅ Coverage reports generated in cicd/reports/"
+
+test-service: ## Run tests for a specific service (usage: make test-service SERVICE=dfs)
+	@if [ -z "$(SERVICE)" ]; then echo "Error: SERVICE not set. Usage: make test-service SERVICE=dfs"; exit 1; fi
+	@echo "🧪 Testing $(SERVICE)..."
+	@cd ../services/$(SERVICE) && go test ./... -v -coverprofile=coverage.out
+	@cd ../services/$(SERVICE) && go tool cover -func=coverage.out | tail -1

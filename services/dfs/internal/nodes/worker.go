@@ -10,8 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/razvanmarinn/dfs/internal/metrics"
 	datanodev1 "github.com/razvanmarinn/datalake/protobuf/gen/go/datanode/v1"
 )
 
@@ -73,6 +75,7 @@ func (wn *WorkerNode) PushBlock(stream datanodev1.DataNodeService_PushBlockServe
 	var blockID string
 	var totalBytes int64
 	hasher := crc32.NewIEEE()
+	startTime := time.Now()
 
 	defer func() {
 		if file != nil {
@@ -84,12 +87,20 @@ func (wn *WorkerNode) PushBlock(stream datanodev1.DataNodeService_PushBlockServe
 		req, err := stream.Recv()
 		if err == io.EOF {
 			checksum := hasher.Sum32()
+			checksumDuration := time.Since(startTime).Seconds()
+
 			log.Printf("✅ Stored Block %s (%d bytes, checksum: %d)", blockID, totalBytes, checksum)
 
 			checksumFilePath := filepath.Join(wn.StorageDir, fmt.Sprintf("%s.checksum", blockID))
 			if err := os.WriteFile(checksumFilePath, []byte(fmt.Sprintf("%d", checksum)), 0644); err != nil {
 				log.Printf("Warning: Failed to write checksum file for block %s: %v", blockID, err)
+				metrics.BlockWritesTotal.WithLabelValues("failure").Inc()
+				return err
 			}
+
+			metrics.BlockWritesTotal.WithLabelValues("success").Inc()
+			metrics.ChecksumCalculationDuration.Observe(checksumDuration)
+			metrics.BlockWriteSizeBytes.Observe(float64(totalBytes))
 
 			return stream.SendAndClose(&datanodev1.PushBlockResponse{
 				Success: true,
@@ -98,6 +109,7 @@ func (wn *WorkerNode) PushBlock(stream datanodev1.DataNodeService_PushBlockServe
 		}
 		if err != nil {
 			log.Printf("Stream error: %v", err)
+			metrics.BlockWritesTotal.WithLabelValues("failure").Inc()
 			return err
 		}
 
@@ -147,30 +159,40 @@ func (wn *WorkerNode) getStoredChecksum(blockID string) (uint32, error) {
 }
 
 func (wn *WorkerNode) verifyBlockIntegrity(blockID string) error {
+	startTime := time.Now()
 	filePath := filepath.Join(wn.StorageDir, fmt.Sprintf("%s.bin", blockID))
 
 	file, err := os.Open(filePath)
 	if err != nil {
+		metrics.ChecksumVerificationsTotal.WithLabelValues("missing").Inc()
 		return fmt.Errorf("failed to open block file: %w", err)
 	}
 	defer file.Close()
 
 	hasher := crc32.NewIEEE()
 	if _, err := io.Copy(hasher, file); err != nil {
+		metrics.ChecksumVerificationsTotal.WithLabelValues("error").Inc()
 		return fmt.Errorf("failed to calculate checksum: %w", err)
 	}
 
 	calculatedChecksum := hasher.Sum32()
 	storedChecksum, err := wn.getStoredChecksum(blockID)
 	if err != nil {
+		metrics.ChecksumVerificationsTotal.WithLabelValues("missing").Inc()
 		return fmt.Errorf("failed to retrieve stored checksum: %w", err)
 	}
 
+	verificationDuration := time.Since(startTime).Seconds()
+	metrics.ChecksumVerificationDuration.Observe(verificationDuration)
+
 	if calculatedChecksum != storedChecksum {
+		metrics.ChecksumVerificationsTotal.WithLabelValues("corrupted").Inc()
+		metrics.BlockCorruptionTotal.WithLabelValues(wn.ID).Inc()
 		return fmt.Errorf("checksum mismatch: calculated=%d, stored=%d (CORRUPTION DETECTED)",
 			calculatedChecksum, storedChecksum)
 	}
 
+	metrics.ChecksumVerificationsTotal.WithLabelValues("valid").Inc()
 	log.Printf("✓ Block %s integrity verified (checksum: %d)", blockID, calculatedChecksum)
 	return nil
 }
@@ -178,9 +200,11 @@ func (wn *WorkerNode) verifyBlockIntegrity(blockID string) error {
 func (wn *WorkerNode) FetchBlock(req *datanodev1.FetchBlockRequest, stream datanodev1.DataNodeService_FetchBlockServer) error {
 	blockID := req.BlockId
 	filePath := filepath.Join(wn.StorageDir, fmt.Sprintf("%s.bin", blockID))
+	var totalBytes int64
 
 	if err := wn.verifyBlockIntegrity(blockID); err != nil {
 		log.Printf("⚠️ Block integrity check failed for %s: %v", blockID, err)
+		metrics.BlockReadsTotal.WithLabelValues("failure").Inc()
 		return fmt.Errorf("block integrity check failed: %w", err)
 	}
 
@@ -188,8 +212,10 @@ func (wn *WorkerNode) FetchBlock(req *datanodev1.FetchBlockRequest, stream datan
 	if err != nil {
 		if os.IsNotExist(err) {
 			log.Printf("Block not found: %s", blockID)
+			metrics.BlockReadsTotal.WithLabelValues("failure").Inc()
 			return fmt.Errorf("block not found")
 		}
+		metrics.BlockReadsTotal.WithLabelValues("failure").Inc()
 		return err
 	}
 	defer file.Close()
@@ -205,15 +231,22 @@ func (wn *WorkerNode) FetchBlock(req *datanodev1.FetchBlockRequest, stream datan
 			break
 		}
 		if err != nil {
+			metrics.BlockReadsTotal.WithLabelValues("failure").Inc()
 			return err
 		}
+
+		totalBytes += int64(n)
 
 		if err := stream.Send(&datanodev1.FetchBlockResponse{
 			Chunk: buffer[:n],
 		}); err != nil {
+			metrics.BlockReadsTotal.WithLabelValues("failure").Inc()
 			return err
 		}
 	}
+
+	metrics.BlockReadsTotal.WithLabelValues("success").Inc()
+	metrics.BlockReadSizeBytes.Observe(float64(totalBytes))
 
 	return nil
 }

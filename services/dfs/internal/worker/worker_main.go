@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	datanodev1 "github.com/razvanmarinn/datalake/protobuf/gen/go/datanode/v1"
 	"github.com/razvanmarinn/dfs/internal/nodes"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -79,6 +81,16 @@ func main() {
 
 	httpServer := NewHTTPServer(storageDir, httpPort)
 	httpServer.Start()
+
+	go func() {
+		metricsPort := httpPort + 1
+		http.Handle("/metrics", promhttp.Handler())
+		metricsAddr := ":" + strconv.Itoa(metricsPort)
+		log.Printf("Metrics server listening on %s", metricsAddr)
+		if err := http.ListenAndServe(metricsAddr, nil); err != nil {
+			log.Printf("Metrics server failed: %v", err)
+		}
+	}()
 
 	lis, err := net.Listen("tcp", listenAddr)
 	if err != nil {

@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/razvanmarinn/dfs/internal/metrics"
 )
 
 type IntegrityChecker struct {
@@ -47,16 +49,26 @@ func (ic *IntegrityChecker) runPeriodicChecks() {
 }
 
 func (ic *IntegrityChecker) checkAllBlocks() {
+	startTime := time.Now()
 	log.Println("🔍 Starting periodic integrity check...")
+
+	defer func() {
+		duration := time.Since(startTime).Seconds()
+		metrics.IntegrityCheckDuration.Observe(duration)
+		metrics.LastIntegrityCheckTimestamp.SetToCurrentTime()
+		metrics.IntegrityChecksTotal.WithLabelValues("completed").Inc()
+	}()
 
 	files, err := os.ReadDir(ic.worker.StorageDir)
 	if err != nil {
 		log.Printf("Error reading storage directory: %v", err)
+		metrics.IntegrityChecksTotal.WithLabelValues("failed").Inc()
 		return
 	}
 
 	checkedCount := 0
 	corruptedCount := 0
+	totalBlocks := 0
 
 	for _, file := range files {
 		if file.IsDir() {
@@ -64,6 +76,7 @@ func (ic *IntegrityChecker) checkAllBlocks() {
 		}
 
 		if strings.HasSuffix(file.Name(), ".bin") {
+			totalBlocks++
 			blockID := strings.TrimSuffix(file.Name(), ".bin")
 
 			if err := ic.worker.verifyBlockIntegrity(blockID); err != nil {
@@ -75,6 +88,9 @@ func (ic *IntegrityChecker) checkAllBlocks() {
 			}
 		}
 	}
+
+	metrics.BlocksStoredTotal.WithLabelValues(ic.worker.ID).Set(float64(totalBlocks))
+	metrics.CorruptedBlocksCurrent.WithLabelValues(ic.worker.ID).Set(float64(corruptedCount))
 
 	if corruptedCount > 0 {
 		log.Printf("⚠️ Integrity check complete: %d blocks checked, %d CORRUPTED", checkedCount, corruptedCount)

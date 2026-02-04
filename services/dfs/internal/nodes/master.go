@@ -47,7 +47,7 @@ type MasterNode struct {
 	opLogFile    *os.File
 	opLock       sync.Mutex
 	LoadBalancer *load_balancer.LoadBalancer
-	lock         sync.Mutex
+	lock         sync.RWMutex
 	IsActive     bool
 	Replicator   *Replicator
 }
@@ -148,8 +148,8 @@ func GetMasterNodeInstance() *MasterNode {
 }
 
 func (mn *MasterNode) GetFileBatches(filePath string) []uuid.UUID {
-	mn.lock.Lock()
-	defer mn.lock.Unlock()
+	mn.lock.RLock()
+	defer mn.lock.RUnlock()
 
 	if inode, exists := mn.Namespace[filePath]; exists {
 		return inode.Blocks
@@ -158,8 +158,8 @@ func (mn *MasterNode) GetFileBatches(filePath string) []uuid.UUID {
 }
 
 func (mn *MasterNode) GetBatchLocations(batchUUID uuid.UUID) []uuid.UUID {
-	mn.lock.Lock()
-	defer mn.lock.Unlock()
+	mn.lock.RLock()
+	defer mn.lock.RUnlock()
 
 	if blockMeta, exists := mn.BlockMap[batchUUID]; exists {
 		return blockMeta.Replicas
@@ -206,8 +206,8 @@ func (mn *MasterNode) UpdateBlockLocation(blockUUID uuid.UUID, workerNodeID stri
 }
 
 func (mn *MasterNode) GetWorkerAllocatedForBatch(batchID uuid.UUID) (string, error) {
-	mn.lock.Lock()
-	defer mn.lock.Unlock()
+	mn.lock.RLock()
+	defer mn.lock.RUnlock()
 
 	blockMeta, exists := mn.BlockMap[batchID]
 	if !exists {
@@ -452,8 +452,8 @@ func (mn *MasterNode) CommitCompaction(req *coordinatorv1.CommitCompactionReques
 }
 
 func (mn *MasterNode) GetFileMetadata(projectID, filePath string) (*coordinatorv1.GetFileMetadataResponse, error) {
-	mn.lock.Lock()
-	defer mn.lock.Unlock()
+	mn.lock.RLock()
+	defer mn.lock.RUnlock()
 
 	fullPath := filepath.Clean(filePath)
 	inode, exists := mn.Namespace[fullPath]
@@ -500,8 +500,8 @@ func (mn *MasterNode) GetFileMetadata(projectID, filePath string) (*coordinatorv
 }
 
 func (mn *MasterNode) ListFiles(projectID, prefix string) ([]string, error) {
-	mn.lock.Lock()
-	defer mn.lock.Unlock()
+	mn.lock.RLock()
+	defer mn.lock.RUnlock()
 
 	var files []string
 
