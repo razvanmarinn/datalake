@@ -7,62 +7,74 @@ build:
   artifacts:
     - image: datalake/dfs-master
       context: services/dfs
-      docker:
-        dockerfile: Dockerfile.master
-
+      docker: { dockerfile: Dockerfile.master }
     - image: datalake/dfs-worker
       context: services/dfs
-      docker:
-        dockerfile: Dockerfile.worker
-
+      docker: { dockerfile: Dockerfile.worker }
     - image: datalake/ingestion-consumer
       context: services/ingestion-consumer
-      docker:
-        dockerfile: Dockerfile
-
+      docker: { dockerfile: Dockerfile }
     - image: datalake/api-gateway
       context: services/api-gateway
-      docker:
-        dockerfile: Dockerfile
-
+      docker: { dockerfile: Dockerfile }
     - image: datalake/identity-service
       context: services/identity
-      docker:
-        dockerfile: Dockerfile
-
+      docker: { dockerfile: Dockerfile }
     - image: datalake/metadata-service
       context: services/metadata-service
-      docker:
-        dockerfile: Dockerfile
-
+      docker: { dockerfile: Dockerfile }
     - image: datalake/streaming-ingestion
       context: services/streaming-ingestion
-      docker:
-        dockerfile: Dockerfile
-
+      docker: { dockerfile: Dockerfile }
     - image: datalake/query-service
       context: services/query-service
-      docker:
-        dockerfile: Dockerfile
-
+      docker: { dockerfile: Dockerfile }
     - image: datalake/compactor
       context: .
-      docker:
-        dockerfile: services/compactor/Dockerfile
-
-manifests:
-  rawYaml:
-    - k8s/plain-yaml/*.yaml
-    - k8s/plain-yaml/network-policies/*.yaml
+      docker: { dockerfile: services/compactor/Dockerfile }
 
 deploy:
-  kubectl: {}
+  statusCheck: true
+  helm:
+    flags:
+      install:
+        - "--timeout=10m0s"
+        - "--wait-for-jobs"
+      upgrade:
+        - "--timeout=10m0s"
+        - "--wait-for-jobs"
+    releases:
+      - name: observability
+        namespace: observability
+        createNamespace: true
+        chartPath: k8s/charts/observability
+        skipBuildDependencies: true
+        valuesFiles:
+          - k8s/charts/observability/values.yaml
+
+      - name: datalake
+        namespace: datalake
+        createNamespace: true
+        chartPath: k8s/charts/datalake
+        skipBuildDependencies: true
+        valuesFiles:
+          - k8s/charts/datalake/values.yaml
+        setValueTemplates:
+          dfs.master.tag: "{{.IMAGE_TAG_datalake_dfs_master}}"
+          dfs.worker.tag: "{{.IMAGE_TAG_datalake_dfs_worker}}"
+          ingestionConsumer.tag: "{{.IMAGE_TAG_datalake_ingestion_consumer}}"
+          apiGateway.tag: "{{.IMAGE_TAG_datalake_api_gateway}}"
+          identity.tag: "{{.IMAGE_TAG_datalake_identity_service}}"
+          metadata.tag: "{{.IMAGE_TAG_datalake_metadata_service}}"
+          streamingIngestion.tag: "{{.IMAGE_TAG_datalake_streaming_ingestion}}"
+          query.tag: "{{.IMAGE_TAG_datalake_query_service}}"
+          compactor.tag: "{{.IMAGE_TAG_datalake_compactor}}"
 
 portForward:
   - resourceType: service
     resourceName: api-gateway
     namespace: datalake
-    port: 80
+    port: 8083
     localPort: 8083
   - resourceType: service
     resourceName: identity-service
@@ -74,13 +86,14 @@ portForward:
     namespace: datalake
     port: 8081
     localPort: 8081
+
   - resourceType: service
-    resourceName: grafana
+    resourceName: observability-grafana
     namespace: observability
-    port: 3000
+    port: 80
     localPort: 3000
   - resourceType: service
-    resourceName: prometheus
+    resourceName: observability-kube-prometh-prometheus
     namespace: observability
     port: 9090
     localPort: 9090

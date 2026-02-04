@@ -286,6 +286,7 @@ func (mn *MasterNode) AllocateBlock(req *coordinatorv1.AllocateBlockRequest) (*c
 	mn.BlockMap[newBlockID] = &BlockMetadata{
 		BlockID:  newBlockID,
 		Size:     req.SizeBytes,
+		Checksum: 0,
 		Replicas: []uuid.UUID{workerUUID},
 	}
 
@@ -329,8 +330,11 @@ func (mn *MasterNode) commitFileInternal(req *coordinatorv1.CommitFileRequest) (
 			mn.BlockMap[bid] = &BlockMetadata{
 				BlockID:  bid,
 				Size:     b.Size,
+				Checksum: uint32(b.Checksum),
 				Replicas: make([]uuid.UUID, 0),
 			}
+		} else {
+			mn.BlockMap[bid].Checksum = uint32(b.Checksum)
 		}
 	}
 
@@ -469,7 +473,7 @@ func (mn *MasterNode) GetFileMetadata(projectID, filePath string) (*coordinatorv
 		blocks = append(blocks, &commonv1.BlockInfo{
 			BlockId:  blockUUID.String(),
 			Size:     blockMeta.Size,
-			Checksum: 0,
+			Checksum: int64(blockMeta.Checksum),
 		})
 
 		if len(blockMeta.Replicas) > 0 {

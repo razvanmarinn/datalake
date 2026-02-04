@@ -36,6 +36,7 @@ type Inode struct {
 type BlockMetadata struct {
 	BlockID     uuid.UUID   `json:"blockId"`
 	Size        int64       `json:"size"`
+	Checksum    uint32      `json:"checksum"`
 	Version     int64       `json:"version"`
 	PrimaryNode string      `json:"primaryNode"`
 	LeaseExpiry time.Time   `json:"leaseExpiry"`

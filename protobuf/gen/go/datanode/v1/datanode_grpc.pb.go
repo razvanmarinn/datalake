@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DataNodeService_PushBlock_FullMethodName     = "/datanode.v1.DataNodeService/PushBlock"
-	DataNodeService_FetchBlock_FullMethodName    = "/datanode.v1.DataNodeService/FetchBlock"
-	DataNodeService_GetWorkerInfo_FullMethodName = "/datanode.v1.DataNodeService/GetWorkerInfo"
-	DataNodeService_DeleteBlock_FullMethodName   = "/datanode.v1.DataNodeService/DeleteBlock"
+	DataNodeService_PushBlock_FullMethodName        = "/datanode.v1.DataNodeService/PushBlock"
+	DataNodeService_FetchBlock_FullMethodName       = "/datanode.v1.DataNodeService/FetchBlock"
+	DataNodeService_GetWorkerInfo_FullMethodName    = "/datanode.v1.DataNodeService/GetWorkerInfo"
+	DataNodeService_DeleteBlock_FullMethodName      = "/datanode.v1.DataNodeService/DeleteBlock"
+	DataNodeService_GetBlockChecksum_FullMethodName = "/datanode.v1.DataNodeService/GetBlockChecksum"
 )
 
 // DataNodeServiceClient is the client API for DataNodeService service.
@@ -33,6 +34,7 @@ type DataNodeServiceClient interface {
 	FetchBlock(ctx context.Context, in *FetchBlockRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[FetchBlockResponse], error)
 	GetWorkerInfo(ctx context.Context, in *GetWorkerInfoRequest, opts ...grpc.CallOption) (*GetWorkerInfoResponse, error)
 	DeleteBlock(ctx context.Context, in *DeleteBlockRequest, opts ...grpc.CallOption) (*DeleteBlockResponse, error)
+	GetBlockChecksum(ctx context.Context, in *GetBlockChecksumRequest, opts ...grpc.CallOption) (*GetBlockChecksumResponse, error)
 }
 
 type dataNodeServiceClient struct {
@@ -95,6 +97,16 @@ func (c *dataNodeServiceClient) DeleteBlock(ctx context.Context, in *DeleteBlock
 	return out, nil
 }
 
+func (c *dataNodeServiceClient) GetBlockChecksum(ctx context.Context, in *GetBlockChecksumRequest, opts ...grpc.CallOption) (*GetBlockChecksumResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetBlockChecksumResponse)
+	err := c.cc.Invoke(ctx, DataNodeService_GetBlockChecksum_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DataNodeServiceServer is the server API for DataNodeService service.
 // All implementations must embed UnimplementedDataNodeServiceServer
 // for forward compatibility.
@@ -103,6 +115,7 @@ type DataNodeServiceServer interface {
 	FetchBlock(*FetchBlockRequest, grpc.ServerStreamingServer[FetchBlockResponse]) error
 	GetWorkerInfo(context.Context, *GetWorkerInfoRequest) (*GetWorkerInfoResponse, error)
 	DeleteBlock(context.Context, *DeleteBlockRequest) (*DeleteBlockResponse, error)
+	GetBlockChecksum(context.Context, *GetBlockChecksumRequest) (*GetBlockChecksumResponse, error)
 	mustEmbedUnimplementedDataNodeServiceServer()
 }
 
@@ -124,6 +137,9 @@ func (UnimplementedDataNodeServiceServer) GetWorkerInfo(context.Context, *GetWor
 }
 func (UnimplementedDataNodeServiceServer) DeleteBlock(context.Context, *DeleteBlockRequest) (*DeleteBlockResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeleteBlock not implemented")
+}
+func (UnimplementedDataNodeServiceServer) GetBlockChecksum(context.Context, *GetBlockChecksumRequest) (*GetBlockChecksumResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetBlockChecksum not implemented")
 }
 func (UnimplementedDataNodeServiceServer) mustEmbedUnimplementedDataNodeServiceServer() {}
 func (UnimplementedDataNodeServiceServer) testEmbeddedByValue()                         {}
@@ -200,6 +216,24 @@ func _DataNodeService_DeleteBlock_Handler(srv interface{}, ctx context.Context, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DataNodeService_GetBlockChecksum_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetBlockChecksumRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataNodeServiceServer).GetBlockChecksum(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataNodeService_GetBlockChecksum_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataNodeServiceServer).GetBlockChecksum(ctx, req.(*GetBlockChecksumRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DataNodeService_ServiceDesc is the grpc.ServiceDesc for DataNodeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -214,6 +248,10 @@ var DataNodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteBlock",
 			Handler:    _DataNodeService_DeleteBlock_Handler,
+		},
+		{
+			MethodName: "GetBlockChecksum",
+			Handler:    _DataNodeService_GetBlockChecksum_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

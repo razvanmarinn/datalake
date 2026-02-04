@@ -74,6 +74,9 @@ func main() {
 
 	worker.Start()
 
+	integrityChecker := nodes.NewIntegrityChecker(worker, 1*time.Hour)
+	integrityChecker.Start()
+
 	httpServer := NewHTTPServer(storageDir, httpPort)
 	httpServer.Start()
 
@@ -135,6 +138,7 @@ func main() {
 		}
 
 		grpcServer.GracefulStop()
+		integrityChecker.Stop()
 		worker.Stop()
 		httpServer.Stop()
 		log.Println("Worker node stopped")

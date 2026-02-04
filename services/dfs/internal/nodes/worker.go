@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"log"
 	"os"
@@ -71,6 +72,7 @@ func (wn *WorkerNode) PushBlock(stream datanodev1.DataNodeService_PushBlockServe
 	var file *os.File
 	var blockID string
 	var totalBytes int64
+	hasher := crc32.NewIEEE()
 
 	defer func() {
 		if file != nil {
@@ -81,10 +83,17 @@ func (wn *WorkerNode) PushBlock(stream datanodev1.DataNodeService_PushBlockServe
 	for {
 		req, err := stream.Recv()
 		if err == io.EOF {
-			log.Printf("✅ Stored Block %s (%d bytes)", blockID, totalBytes)
+			checksum := hasher.Sum32()
+			log.Printf("✅ Stored Block %s (%d bytes, checksum: %d)", blockID, totalBytes, checksum)
+
+			checksumFilePath := filepath.Join(wn.StorageDir, fmt.Sprintf("%s.checksum", blockID))
+			if err := os.WriteFile(checksumFilePath, []byte(fmt.Sprintf("%d", checksum)), 0644); err != nil {
+				log.Printf("Warning: Failed to write checksum file for block %s: %v", blockID, err)
+			}
+
 			return stream.SendAndClose(&datanodev1.PushBlockResponse{
 				Success: true,
-				Message: fmt.Sprintf("Stored %d bytes", totalBytes),
+				Message: fmt.Sprintf("Stored %d bytes, checksum: %d", totalBytes, checksum),
 			})
 		}
 		if err != nil {
@@ -115,14 +124,65 @@ func (wn *WorkerNode) PushBlock(stream datanodev1.DataNodeService_PushBlockServe
 			if err != nil {
 				return fmt.Errorf("write failure: %w", err)
 			}
+			hasher.Write(payload.Chunk)
 			totalBytes += int64(n)
 		}
 	}
 }
 
+func (wn *WorkerNode) getStoredChecksum(blockID string) (uint32, error) {
+	checksumFilePath := filepath.Join(wn.StorageDir, fmt.Sprintf("%s.checksum", blockID))
+	data, err := os.ReadFile(checksumFilePath)
+	if err != nil {
+		return 0, err
+	}
+
+	var checksum uint32
+	_, err = fmt.Sscanf(string(data), "%d", &checksum)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse checksum: %w", err)
+	}
+
+	return checksum, nil
+}
+
+func (wn *WorkerNode) verifyBlockIntegrity(blockID string) error {
+	filePath := filepath.Join(wn.StorageDir, fmt.Sprintf("%s.bin", blockID))
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open block file: %w", err)
+	}
+	defer file.Close()
+
+	hasher := crc32.NewIEEE()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return fmt.Errorf("failed to calculate checksum: %w", err)
+	}
+
+	calculatedChecksum := hasher.Sum32()
+	storedChecksum, err := wn.getStoredChecksum(blockID)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve stored checksum: %w", err)
+	}
+
+	if calculatedChecksum != storedChecksum {
+		return fmt.Errorf("checksum mismatch: calculated=%d, stored=%d (CORRUPTION DETECTED)",
+			calculatedChecksum, storedChecksum)
+	}
+
+	log.Printf("✓ Block %s integrity verified (checksum: %d)", blockID, calculatedChecksum)
+	return nil
+}
+
 func (wn *WorkerNode) FetchBlock(req *datanodev1.FetchBlockRequest, stream datanodev1.DataNodeService_FetchBlockServer) error {
 	blockID := req.BlockId
 	filePath := filepath.Join(wn.StorageDir, fmt.Sprintf("%s.bin", blockID))
+
+	if err := wn.verifyBlockIntegrity(blockID); err != nil {
+		log.Printf("⚠️ Block integrity check failed for %s: %v", blockID, err)
+		return fmt.Errorf("block integrity check failed: %w", err)
+	}
 
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -158,19 +218,45 @@ func (wn *WorkerNode) FetchBlock(req *datanodev1.FetchBlockRequest, stream datan
 	return nil
 }
 
+func (wn *WorkerNode) GetBlockChecksum(ctx context.Context, req *datanodev1.GetBlockChecksumRequest) (*datanodev1.GetBlockChecksumResponse, error) {
+	blockID := req.BlockId
+
+	checksum, err := wn.getStoredChecksum(blockID)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &datanodev1.GetBlockChecksumResponse{
+				Checksum: 0,
+				Exists:   false,
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to retrieve checksum: %w", err)
+	}
+
+	return &datanodev1.GetBlockChecksumResponse{
+		Checksum: checksum,
+		Exists:   true,
+	}, nil
+}
+
 func (wn *WorkerNode) DeleteBlock(ctx context.Context, req *datanodev1.DeleteBlockRequest) (*datanodev1.DeleteBlockResponse, error) {
 	blockID := req.BlockId
 	filePath := filepath.Join(wn.StorageDir, fmt.Sprintf("%s.bin", blockID))
+	checksumFilePath := filepath.Join(wn.StorageDir, fmt.Sprintf("%s.checksum", blockID))
 
 	log.Printf("🗑️ Deleting Block %s", blockID)
 
 	if err := os.Remove(filePath); err != nil {
 		if os.IsNotExist(err) {
 			log.Printf("Block %s not found during deletion (already deleted?)", blockID)
+			os.Remove(checksumFilePath)
 			return &datanodev1.DeleteBlockResponse{Success: true, Message: "Block not found, assumed deleted"}, nil
 		}
 		log.Printf("Failed to delete block %s: %v", blockID, err)
 		return &datanodev1.DeleteBlockResponse{Success: false, Message: err.Error()}, err
+	}
+
+	if err := os.Remove(checksumFilePath); err != nil && !os.IsNotExist(err) {
+		log.Printf("Warning: Failed to delete checksum file for block %s: %v", blockID, err)
 	}
 
 	return &datanodev1.DeleteBlockResponse{Success: true, Message: "Block deleted successfully"}, nil
